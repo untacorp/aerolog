@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
+
 /// Filesystem synchronization discipline for write operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncMode {
@@ -28,6 +30,20 @@ pub enum SyncMode {
 
     /// Defer synchronization entirely to operating system page cache flush semantics.
     OsDefault,
+}
+
+/// Declarative retention policies for append-only streams and time-series partitions.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum RetentionPolicy {
+    /// Retain all stream entries indefinitely (default).
+    #[default]
+    KeepAll,
+
+    /// Retain at most the latest `max` entries in this stream partition.
+    MaxEntries(u64),
+
+    /// Retain entries authored within the last `ttl_millis` duration.
+    TimeToLive(u64),
 }
 
 /// Configuration options for an [`AeroLogDb`](crate::AeroLogDb) instance.
@@ -52,6 +68,12 @@ pub struct AeroLogConfig {
     /// Node identifier hash representing this local node (64-bit integer).
     /// Default: Derived deterministically or randomized.
     pub node_id_hash: u64,
+
+    /// Default retention policy applied to streams unless an override is specified.
+    pub default_stream_retention: RetentionPolicy,
+
+    /// Stream-specific retention policy overrides.
+    pub stream_retention_overrides: HashMap<String, RetentionPolicy>,
 }
 
 impl Default for AeroLogConfig {
@@ -62,6 +84,8 @@ impl Default for AeroLogConfig {
             sparse_checkpoint_interval: 100,
             tombstone_ttl_millis: None,
             node_id_hash: 0,
+            default_stream_retention: RetentionPolicy::KeepAll,
+            stream_retention_overrides: HashMap::new(),
         }
     }
 }
@@ -97,5 +121,29 @@ impl AeroLogConfig {
     pub fn with_tombstone_ttl_millis(mut self, ttl: Option<u64>) -> Self {
         self.tombstone_ttl_millis = ttl;
         self
+    }
+
+    /// Sets the default stream retention policy.
+    pub fn with_default_stream_retention(mut self, policy: RetentionPolicy) -> Self {
+        self.default_stream_retention = policy;
+        self
+    }
+
+    /// Configures a specific retention policy for a single stream partition.
+    pub fn with_stream_retention_override(
+        mut self,
+        stream_id: impl Into<String>,
+        policy: RetentionPolicy,
+    ) -> Self {
+        self.stream_retention_overrides
+            .insert(stream_id.into(), policy);
+        self
+    }
+
+    /// Resolves the retention policy for a specific stream identifier.
+    pub fn retention_for_stream(&self, stream_id: &str) -> &RetentionPolicy {
+        self.stream_retention_overrides
+            .get(stream_id)
+            .unwrap_or(&self.default_stream_retention)
     }
 }

@@ -38,7 +38,7 @@ pub mod record;
 pub mod recovery;
 pub mod stream;
 
-pub use config::{AeroLogConfig, SyncMode};
+pub use config::{AeroLogConfig, RetentionPolicy, SyncMode};
 pub use db::AeroLogDb;
 pub use error::{AeroLogError, Result};
 pub use hlc::{HlcGenerator, HlcTimestamp};

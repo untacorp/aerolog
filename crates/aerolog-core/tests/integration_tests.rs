@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use aerolog_core::{AeroLogConfig, AeroLogDb, HlcTimestamp, SyncMode};
+use aerolog_core::{AeroLogConfig, AeroLogDb, HlcTimestamp, RetentionPolicy, SyncMode};
 use std::sync::Arc;
 use std::thread;
 use tempfile::tempdir;
@@ -162,4 +162,27 @@ fn test_lww_out_of_order_remote_sync() {
 
     // Value must remain ONLINE
     assert_eq!(db.get("status", "node-1").unwrap().unwrap(), b"ONLINE");
+}
+
+#[test]
+fn test_stream_retention_policy_max_entries() {
+    let dir = tempdir().unwrap();
+    // Segment size small to roll segments (200 bytes)
+    let config = AeroLogConfig::new(0x505)
+        .with_max_segment_size(200)
+        .with_sync_mode(SyncMode::SyncOnWrite)
+        .with_default_stream_retention(RetentionPolicy::MaxEntries(10));
+
+    let db = AeroLogDb::open(dir.path(), config).unwrap();
+    let stream = db.get_stream("alerts").unwrap();
+
+    // Append 50 entries
+    for i in 0..50 {
+        let payload = format!("Alert #{i:04}").into_bytes();
+        stream.append(payload).unwrap();
+    }
+
+    // Run compaction to apply MaxEntries(10) on sealed segments
+    let stats = db.compact().unwrap();
+    assert!(stats.records_evicted > 0);
 }

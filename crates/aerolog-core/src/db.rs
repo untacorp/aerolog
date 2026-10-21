@@ -273,7 +273,7 @@ impl AeroLogDb {
             &self.inner.base_dir,
             active_id,
             &self.inner.keydir,
-            self.inner.config.max_segment_size,
+            &self.inner.config,
         )
     }
 
