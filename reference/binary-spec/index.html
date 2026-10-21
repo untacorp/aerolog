@@ -1785,7 +1785,7 @@
 
 
 <h1 id="binary-file-format-specification">Binary File Format Specification</h1>
-<p>This document specifies the exact byte-level physical layout of <code>.aerolog</code> segment files. All numeric values are encoded in <strong>Little-Endian</strong> byte order.</p>
+<p>This document specifies the exact byte-level physical layout of <code>.aerolog</code> segment files. All multi-byte numeric fields are encoded in <strong>Big-Endian</strong> (Network Byte Order).</p>
 <hr />
 <h2 id="1-segment-overview">1. Segment Overview</h2>
 <p>An <code>.aerolog</code> segment file consists of a continuous stream of variable-length binary records. There is no file-level header; every record begins with a fixed 32-byte header.</p>
@@ -1793,7 +1793,7 @@
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>|                       32-BYTE FIXED RECORD HEADER                             |
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>+-------------------------------------------------------------------------------+
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>|                         VARIABLE-LENGTH RECORD BODY                           |
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>|       [Collection Bytes] + [Key Bytes] + [Payload / Value Bytes]              |
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>|                    [Key Bytes] + [Payload / Value Bytes]                      |
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>+-------------------------------------------------------------------------------+
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>|                       NEXT RECORD (Header + Body)                             |
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>|                                  ...                                          |
@@ -1818,52 +1818,52 @@
 <td style="text-align: left;">Hardware CRC32-IEEE checksum of bytes <code>0x04..0x20</code> + Body</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>0x04 - 0x0B</code></td>
+<td style="text-align: left;"><code>0x04 - 0x05</code></td>
+<td style="text-align: left;"><code>magic</code></td>
+<td style="text-align: left;"><code>u16</code></td>
+<td style="text-align: left;">Magic signature bytes <code>0x414C</code> (ASCII "AL")</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>0x06</code></td>
+<td style="text-align: left;"><code>version</code></td>
+<td style="text-align: left;"><code>u8</code></td>
+<td style="text-align: left;">Record layout version (currently <code>0x01</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>0x07</code></td>
+<td style="text-align: left;"><code>record_type</code></td>
+<td style="text-align: left;"><code>u8</code></td>
+<td style="text-align: left;"><code>0x00</code> = Put, <code>0x01</code> = Delete, <code>0x02</code> = StreamEntry</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>0x08 - 0x0F</code></td>
 <td style="text-align: left;"><code>physical_time</code></td>
 <td style="text-align: left;"><code>u64</code></td>
 <td style="text-align: left;">Wall-clock epoch millisecond timestamp</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>0x0C - 0x0D</code></td>
+<td style="text-align: left;"><code>0x10 - 0x11</code></td>
 <td style="text-align: left;"><code>logical_counter</code></td>
 <td style="text-align: left;"><code>u16</code></td>
 <td style="text-align: left;">Monotonic sub-millisecond logical counter</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>0x0E - 0x15</code></td>
+<td style="text-align: left;"><code>0x12 - 0x19</code></td>
 <td style="text-align: left;"><code>node_id_hash</code></td>
 <td style="text-align: left;"><code>u64</code></td>
 <td style="text-align: left;">FNV-1a 64-bit hash of originating node identifier</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>0x16</code></td>
-<td style="text-align: left;"><code>record_type</code></td>
-<td style="text-align: left;"><code>u8</code></td>
-<td style="text-align: left;"><code>1</code> = Insert/Update, <code>2</code> = Tombstone, <code>3</code> = StreamAppend</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>0x17 - 0x18</code></td>
+<td style="text-align: left;"><code>0x1A - 0x1B</code></td>
 <td style="text-align: left;"><code>key_len</code></td>
 <td style="text-align: left;"><code>u16</code></td>
-<td style="text-align: left;">Length of the entity Key string in bytes</td>
+<td style="text-align: left;">Length of the composite key string in bytes</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>0x19 - 0x1A</code></td>
-<td style="text-align: left;"><code>collection_len</code></td>
-<td style="text-align: left;"><code>u16</code></td>
-<td style="text-align: left;">Length of the Collection string in bytes</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>0x1B - 0x1E</code></td>
-<td style="text-align: left;"><code>val_len</code></td>
+<td style="text-align: left;"><code>0x1C - 0x1F</code></td>
+<td style="text-align: left;"><code>value_len</code></td>
 <td style="text-align: left;"><code>u32</code></td>
 <td style="text-align: left;">Length of the Payload/Value in bytes</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>0x1F - 0x1F</code></td>
-<td style="text-align: left;"><code>reserved</code></td>
-<td style="text-align: left;"><code>u8[1]</code></td>
-<td style="text-align: left;">Alignment padding byte (must be <code>0x00</code>)</td>
 </tr>
 </tbody>
 </table>
@@ -1875,29 +1875,24 @@
 <tr>
 <th style="text-align: left;">Field Name</th>
 <th style="text-align: left;">Length in Bytes</th>
-<th style="text-align: left;">Encoding</th>
+<th style="text-align: left;">Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>collection</code></td>
-<td style="text-align: left;"><code>collection_len</code></td>
-<td style="text-align: left;">UTF-8 String (e.g. <code>"users"</code>, <code>"messages"</code>)</td>
-</tr>
-<tr>
 <td style="text-align: left;"><code>key</code></td>
 <td style="text-align: left;"><code>key_len</code></td>
-<td style="text-align: left;">UTF-8 String (e.g. <code>"usr_01"</code>, <code>"offset_100"</code>)</td>
+<td style="text-align: left;">UTF-8 String (<code>collection:key</code> for KV; <code>stream_id</code> for streams)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>value</code></td>
-<td style="text-align: left;"><code>val_len</code></td>
-<td style="text-align: left;">Raw Binary Blob (CBOR, JSON, encrypted bytes)</td>
+<td style="text-align: left;"><code>value_len</code></td>
+<td style="text-align: left;">Raw Binary Payload (CBOR, JSON, binary blob)</td>
 </tr>
 </tbody>
 </table>
 <p>Total record length on disk:
-$<span class="arithmatex">\(\text{Total Bytes} = 32 + \text{key\_len} + \text{collection\_len} + \text{val\_len}\)</span>$</p>
+$<span class="arithmatex">\(\text{Total Bytes} = 32 + \text{key\_len} + \text{value\_len}\)</span>$</p>
 <hr />
 <h2 id="4-checksum-calculation-scope">4. Checksum Calculation Scope</h2>
 <p>The <code>crc32</code> field at bytes <code>0x00..0x03</code> protects all subsequent bytes of the record:
