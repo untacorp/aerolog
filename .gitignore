@@ -15,6 +15,7 @@ target/
 Thumbs.db
 
 # Bindings and generated output
+site/
 bindings/kotlin/build/
 bindings/kotlin/.gradle/
 bindings/swift/.build/

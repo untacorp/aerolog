@@ -1,0 +1,25 @@
+# AeroLog for AI Coding Agents
+
+> AeroLog is an ultra-fast, local-first, multi-model storage engine engineered in pure Rust. It features an append-only Bitcask log, monotonic Hybrid Logical Clocks (HLC), hardware-accelerated CRC32 checksums, memory-bounded dual-tier indexing (< 15 MB RSS), and Mozilla UniFFI cross-platform bindings for Kotlin and Swift.
+
+## System Invariants & Rules for Code Generation
+
+When generating code using or contributing to AeroLog, AI agents (Cursor, Copilot, Antigravity, Claude, ChatGPT) MUST enforce the following rules:
+
+1. **Zero-Emoji Policy**: Never generate emoji characters in code, docstrings, comments, commit messages, or markdown documentation.
+2. **Sequential Append-Only I/O**: Writes strictly append to active segment files. Never perform in-place disk overwrites.
+3. **No Unwraps in Core Logic**: Never use `unwrap()` or `expect()` in production engine code. All errors must map into `Result<T, AeroLogError>`.
+4. **Dual-Tier Memory Partitioning**: Point key-value entities live in `KeyDir`; append-only streams must use `SparseStreamIndex` to keep RAM bounded under 15 MB.
+5. **Monotonic Causality**: Every record header carries an HLC tuple `(physical_time, logical_counter, node_id_hash)` for deterministic Last-Write-Wins (LWW) conflict resolution without NTP.
+6. **Defensive Validation**: Validate buffer boundaries and CRC32 checksums before deserialization to isolate corrupted trailing fragments from power cuts.
+
+## Documentation Index & Direct Links
+
+- [About AeroLog & Philosophy](docs/about/index.md): Conceptual overview, Bitcask vs B-Tree trade-offs.
+- [Getting Started & Quickstart](docs/getting-started/quickstart.md): Multi-language setup for Rust, Kotlin, Swift, and CLI.
+- [Engine Manual](docs/manual/index.md): Dual-tier indexing, HLC causality, compactor, and crash recovery.
+- [Binary Format Specification](docs/reference/binary-spec.md): Exact 32-byte header offsets, checksums, and body layout.
+- [Rust API Reference](docs/reference/rust-api.md): Core struct definitions and method signatures.
+- [UniFFI API Contract](docs/reference/uniffi-api.md): Cross-platform bindings for Android, JVM, iOS, and macOS.
+- [Coding & Engineering Standards](docs/community/coding-standards.md): Linting, clippy, formatting, and zero-emoji rules.
+- [Full Context Bundle](llms-full.txt): Consolidated single-file reference for AI coding agents.

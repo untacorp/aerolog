@@ -1,46 +1,106 @@
 site_name: AeroLog
 site_description: Universal Local-First Multi-Model Storage Engine in Rust
 site_author: AeroLog Authors
-repo_url: https://github.com/untacorp/aerolog
+site_url: https://untacorp.github.io/aerolog/
 repo_name: untacorp/aerolog
+repo_url: https://github.com/untacorp/aerolog
 copyright: Copyright &copy; 2026 AeroLog Authors. Apache-2.0 Licensed.
+
+docs_dir: docs
+site_dir: site
 
 theme:
   name: material
   palette:
     - scheme: default
-      primary: indigo
-      accent: deep purple
+      primary: custom
+      accent: indigo
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
-      primary: indigo
-      accent: deep purple
+      primary: custom
+      accent: indigo
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
   features:
-    - navigation.instant
-    - navigation.tracking
     - navigation.sections
     - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
     - content.code.copy
+    - content.tabs.link
 
-nav:
-  - Overview: index.md
-  - Architecture Decision Records (ADR):
-    - "ADR 0001: Bitcask Log-Structured Architecture": adr/0001-bitcask-log-architecture.md
-    - "ADR 0002: Dual-Tier Indexing": adr/0002-dual-tier-indexing.md
-    - "ADR 0003: Native HLC Causality": adr/0003-native-hlc-causality.md
-    - "ADR 0004: Pluggable Retention Policy": adr/0004-pluggable-retention-policy.md
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - pymdownx.details
-  - pymdownx.superfences
   - pymdownx.highlight:
       anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.arithmatex:
+      generic: true
   - tables
+
+nav:
+  - Home: index.md
+  - About:
+      - Introduction & Philosophy: about/index.md
+      - Before You Start: about/before-you-start.md
+      - Core Features: about/features.md
+      - Frequently Asked Questions: about/faq.md
+  - Getting Started:
+      - Overview: getting-started/index.md
+      - Installation: getting-started/installation.md
+      - 5-Minute Quickstart: getting-started/quickstart.md
+      - Embedded Rust Guide: getting-started/rust-guide.md
+      - Android & JVM (Kotlin): getting-started/kotlin-android.md
+      - Apple Platforms (Swift): getting-started/swift-apple.md
+      - CLI Diagnostics Tool: getting-started/cli-tool.md
+  - Engine Manual:
+      - Architecture Overview: manual/index.md
+      - Bitcask Append-Only Storage: manual/storage/bitcask-log.md
+      - Dual-Tier In-Memory Indexing: manual/storage/dual-tier-indexing.md
+      - Hybrid Logical Clocks & Causality: manual/causality/hlc-clock.md
+      - Compaction & Retention: manual/storage/compaction-and-retention.md
+      - Crash Recovery & Integrity: manual/integrity/crash-recovery.md
+      - Zero-Dependency CBOR Codec: manual/formats/cbor-codec.md
+      - UniFFI Cross-Platform Bridge: manual/bindings/uniffi-bridge.md
+  - Reference:
+      - Binary File Format Spec: reference/binary-spec.md
+      - Rust API Reference: reference/rust-api.md
+      - UniFFI Foreign API Contract: reference/uniffi-api.md
+      - CLI Command Reference: reference/cli-reference.md
+      - Benchmarks & Hardware Metrics: reference/benchmarks.md
+  - Community & Governance:
+      - Contributing Guide: community/contributing.md
+      - Code of Conduct: community/code-of-conduct.md
+      - Coding & Engineering Standards: community/coding-standards.md
+      - Architecture Decision Records:
+          - "ADR 0001: Bitcask Architecture": community/adr/0001-bitcask-log-architecture.md
+          - "ADR 0002: Dual-Tier Indexing": community/adr/0002-dual-tier-indexing.md
+          - "ADR 0003: Native HLC Causality": community/adr/0003-native-hlc-causality.md
+          - "ADR 0004: Pluggable Retention": community/adr/0004-pluggable-retention-policy.md
+      - Security Policy: community/security.md
+      - Changelog: community/changelog.md

@@ -1,0 +1,88 @@
+# AeroLog Full AI Context Bundle
+
+This file provides a consolidated, high-density reference for AI coding agents integrating or extending AeroLog.
+
+## 1. Engine Core API (Rust)
+
+```rust
+pub struct AeroLogConfig {
+    pub db_dir: PathBuf,
+    pub max_segment_size: u64, // Default: 64 MB
+    pub sparse_interval: usize, // Default: 100 entries per checkpoint
+    pub default_retention: StreamRetentionPolicy,
+}
+
+pub struct AeroLogDb { /* encapsulated state */ }
+
+impl AeroLogDb {
+    pub fn open(config: AeroLogConfig) -> Result<Self>;
+    pub fn put(&self, collection: &str, key: &str, value: &[u8]) -> Result<()>;
+    pub fn get(&self, collection: &str, key: &str) -> Result<Option<Vec<u8>>>;
+    pub fn delete(&self, collection: &str, key: &str) -> Result<()>;
+    pub fn stream(&self, name: &str) -> Result<Stream>;
+    pub fn scan_collection(&self, collection: &str) -> Result<Vec<(String, Vec<u8>)>>;
+    pub fn scan_mutations_since(&self, since_hlc: Option<HlcTimestamp>, limit: usize) -> Result<Vec<Record>>;
+    pub fn compact(&self) -> Result<CompactionStats>;
+}
+
+pub struct Stream { /* encapsulated state */ }
+
+impl Stream {
+    pub fn append(&self, payload: &[u8]) -> Result<u64>;
+    pub fn read_recent(&self, limit: usize) -> Result<Vec<StreamEntry>>;
+    pub fn set_retention_policy(&self, policy: StreamRetentionPolicy);
+}
+
+pub enum StreamRetentionPolicy {
+    KeepAll,
+    MaxEntries(u64),
+    TimeToLive(u64),
+}
+
+pub struct HlcTimestamp {
+    pub physical_time: u64,
+    pub logical_counter: u16,
+    pub node_id_hash: u64,
+}
+```
+
+## 2. UniFFI Foreign API (Kotlin & Swift)
+
+```kotlin
+class FfiAeroLogDb : AutoCloseable {
+    companion object {
+        fun open(path: String, maxSegmentSizeBytes: ULong): FfiAeroLogDb
+    }
+    fun put(collection: String, key: String, value: ByteArray)
+    fun get(collection: String, key: String): ByteArray?
+    fun delete(collection: String, key: String)
+    fun stream(streamName: String): FfiStream
+    fun scanCollection(collection: String): List<FfiKeyValuePair>
+    fun scanMutationsSince(sincePhysicalTime: ULong?, sinceLogicalCounter: UShort?, sinceNodeHash: ULong?, limit: UInt): List<FfiMutationRecord>
+    fun compact(): FfiCompactionStats
+    fun shutdown()
+    override fun close()
+}
+
+class FfiStream {
+    fun append(payload: ByteArray): ULong
+    fun readRecent(limit: UInt): List<FfiStreamEntry>
+    fun setRetentionMaxEntries(maxEntries: ULong)
+    fun setRetentionTtl(ttlSeconds: ULong)
+}
+```
+
+## 3. Physical Binary Record Layout (32-Byte Header)
+
+```
+0x00..0x03 : crc32            (u32 Little-Endian)
+0x04..0x0B : physical_time    (u64 Little-Endian)
+0x0C..0x0D : logical_counter  (u16 Little-Endian)
+0x0E..0x15 : node_id_hash     (u64 Little-Endian)
+0x16       : record_type      (u8: 1=Insert, 2=Tombstone, 3=StreamAppend)
+0x17..0x18 : key_len          (u16 Little-Endian)
+0x19..0x1A : collection_len   (u16 Little-Endian)
+0x1B..0x1E : val_len          (u32 Little-Endian)
+0x1F       : reserved         (u8: 0x00)
+Followed immediately by: collection bytes + key bytes + payload bytes.
+```
