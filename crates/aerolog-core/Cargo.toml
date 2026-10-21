@@ -16,3 +16,12 @@ log = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 env_logger = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "engine_bench"
+harness = false
+
+[[bench]]
+name = "ycsb_bench"
+harness = false

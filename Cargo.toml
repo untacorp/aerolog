@@ -26,3 +26,4 @@ byteorder = "1.5"
 log = "0.4"
 env_logger = "0.11"
 tempfile = "3.17"
+criterion = { version = "0.5", default-features = false, features = ["html_reports"] }
