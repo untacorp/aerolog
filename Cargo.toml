@@ -3,6 +3,7 @@ members = [
     "crates/aerolog-core",
     "crates/aerolog-cbor",
     "crates/aerolog-cli",
+    "crates/aerolog-uniffi",
 ]
 resolver = "2"
 

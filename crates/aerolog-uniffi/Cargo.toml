@@ -1,0 +1,20 @@
+[package]
+name = "aerolog-uniffi"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Universal FFI bindings bridge (Mozilla UniFFI) for AeroLog targeting Kotlin and Swift"
+
+[lib]
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[dependencies]
+aerolog-core = { path = "../aerolog-core" }
+uniffi = { version = "0.32", features = ["cli"] }
+thiserror = { workspace = true }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["uniffi/cli"]

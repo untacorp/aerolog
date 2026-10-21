@@ -1,0 +1,7 @@
+# Configuration for UniFFI bindings generation
+
+[bindings.kotlin]
+package_name = "io.aerolog.uniffi"
+
+[bindings.swift]
+module_name = "AeroLogUniFFI"

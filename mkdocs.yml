@@ -1,0 +1,46 @@
+site_name: AeroLog
+site_description: Universal Local-First Multi-Model Storage Engine in Rust
+site_author: AeroLog Authors
+repo_url: https://github.com/untacorp/aerolog
+repo_name: untacorp/aerolog
+copyright: Copyright &copy; 2026 AeroLog Authors. Apache-2.0 Licensed.
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+
+nav:
+  - Overview: index.md
+  - Architecture Decision Records (ADR):
+    - "ADR 0001: Bitcask Log-Structured Architecture": adr/0001-bitcask-log-architecture.md
+    - "ADR 0002: Dual-Tier Indexing": adr/0002-dual-tier-indexing.md
+    - "ADR 0003: Native HLC Causality": adr/0003-native-hlc-causality.md
+    - "ADR 0004: Pluggable Retention Policy": adr/0004-pluggable-retention-policy.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - tables
