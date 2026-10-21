@@ -60,8 +60,7 @@ impl LogWriter {
     /// Automatically handles segment rolling if the new record exceeds capacity.
     /// Returns `(file_id, offset, total_record_length)`.
     pub fn append(&mut self, record: &Record) -> Result<(u32, u64, u32)> {
-        let record_bytes = record.to_bytes();
-        let record_len = record_bytes.len() as u32;
+        let record_len = record.header.total_record_size() as u32;
 
         // Check if we need to roll the segment before writing
         if self.current_offset > 0
@@ -71,7 +70,10 @@ impl LogWriter {
         }
 
         let write_offset = self.current_offset;
-        self.file_writer.write_all(&record_bytes)?;
+        let header_bytes = record.header.encode();
+        self.file_writer.write_all(&header_bytes)?;
+        self.file_writer.write_all(&record.key)?;
+        self.file_writer.write_all(&record.value)?;
         self.file_writer.flush()?;
 
         if self.sync_mode == SyncMode::SyncOnWrite {

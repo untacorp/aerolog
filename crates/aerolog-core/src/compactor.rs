@@ -83,14 +83,23 @@ impl LogCompactor {
         // Pre-count total stream entries across all sealed files to correctly retain the N newest entries
         let reader = LogReader::new(base_dir);
         let mut total_stream_entries: HashMap<String, u64> = HashMap::new();
-        for &file_id in &sealed_files {
-            if let Ok(records) = reader.scan_segment(file_id) {
-                for (_, record) in records {
+        let has_max_entries_policy = matches!(
+            config.default_stream_retention,
+            RetentionPolicy::MaxEntries(_)
+        ) || config
+            .stream_retention_overrides
+            .values()
+            .any(|p| matches!(p, RetentionPolicy::MaxEntries(_)));
+
+        if has_max_entries_policy {
+            for &file_id in &sealed_files {
+                let _ = reader.scan_segment_streaming(file_id, |_, record| {
                     if record.header.record_type == RecordType::StreamEntry {
                         let stream_id = String::from_utf8_lossy(&record.key).to_string();
                         *total_stream_entries.entry(stream_id).or_insert(0) += 1;
                     }
-                }
+                    Ok(true)
+                });
             }
         }
 
@@ -120,15 +129,13 @@ impl LogCompactor {
         let mut stream_counts: HashMap<String, u64> = HashMap::new();
 
         for &file_id in &sealed_files {
-            let records = reader.scan_segment(file_id)?;
-
-            for (offset, record) in records {
+            let _ = reader.scan_segment_streaming(file_id, |offset, record| {
                 match record.header.record_type {
                     RecordType::Put => {
                         if let Some(live_ptr) = live_pointers.get(&(file_id, offset)) {
                             if !live_ptr.is_tombstone {
                                 // Record is live: copy to compacted segment
-                                let key_str = String::from_utf8_lossy(&record.key).to_string();
+                                let key_str = String::from_utf8_lossy(&record.key);
                                 let (collection, key) =
                                     crate::recovery::RecoveryManager::split_composite_key(&key_str);
 
@@ -156,13 +163,13 @@ impl LogCompactor {
                                 if let Some(ttl) = config.tombstone_ttl_millis {
                                     if current_time_ms > record.header.hlc.physical_time + ttl {
                                         records_evicted += 1;
-                                        continue;
+                                        return Ok(true);
                                     }
                                 }
                                 // If no TTL or not expired yet, preserve tombstone in KeyDir and segment
                                 let (new_file_id, new_offset, new_len) =
                                     compactor_writer.append(&record)?;
-                                let key_str = String::from_utf8_lossy(&record.key).to_string();
+                                let key_str = String::from_utf8_lossy(&record.key);
                                 let (collection, key) =
                                     crate::recovery::RecoveryManager::split_composite_key(&key_str);
                                 let new_ptr = RecordPointer::new(
@@ -193,7 +200,7 @@ impl LogCompactor {
                                 let total =
                                     total_stream_entries.get(&stream_id).copied().unwrap_or(0);
                                 let to_skip = total.saturating_sub(*max);
-                                let seen = stream_counts.entry(stream_id.clone()).or_insert(0);
+                                let seen = stream_counts.entry(stream_id).or_insert(0);
                                 *seen += 1;
                                 *seen > to_skip
                             }
@@ -206,7 +213,8 @@ impl LogCompactor {
                         }
                     }
                 }
-            }
+                Ok(true)
+            });
         }
 
         compactor_writer.sync_all()?;

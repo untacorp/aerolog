@@ -22,7 +22,8 @@ use std::collections::HashMap;
 /// deterministic Last-Write-Wins (LWW) conflict resolution using Hybrid Logical Clocks.
 #[derive(Debug, Default)]
 pub struct KeyDir {
-    entries: RwLock<HashMap<(String, String), RecordPointer>>,
+    // collection -> (key -> pointer)
+    entries: RwLock<HashMap<String, HashMap<String, RecordPointer>>>,
 }
 
 impl KeyDir {
@@ -35,64 +36,82 @@ impl KeyDir {
 
     /// Retrieves the record pointer for a specific collection and key.
     /// Returns `None` if the key does not exist or has been soft-deleted (tombstone).
+    ///
+    /// Executes with zero heap allocations on the hot read path.
     pub fn get(&self, collection: &str, key: &str) -> Option<RecordPointer> {
         let lock = self.entries.read();
-        let composite = (collection.to_string(), key.to_string());
-        match lock.get(&composite) {
+        let col_map = lock.get(collection)?;
+        match col_map.get(key) {
             Some(ptr) if !ptr.is_tombstone => Some(*ptr),
             _ => None,
         }
     }
 
     /// Retrieves the record pointer regardless of whether it is a tombstone.
+    ///
+    /// Executes with zero heap allocations on the hot path.
     pub fn get_raw(&self, collection: &str, key: &str) -> Option<RecordPointer> {
         let lock = self.entries.read();
-        let composite = (collection.to_string(), key.to_string());
-        lock.get(&composite).copied()
+        lock.get(collection)?.get(key).copied()
     }
 
     /// Inserts or updates a record pointer using Last-Write-Wins (LWW) resolution.
     ///
     /// If an existing pointer for this key has a higher HLC timestamp, the update is ignored.
     /// Returns `true` if the pointer was accepted, or `false` if rejected as stale.
+    /// Rejected stale writes perform zero heap allocations.
     pub fn put(&self, collection: &str, key: &str, new_ptr: RecordPointer) -> bool {
         let mut lock = self.entries.write();
-        let composite = (collection.to_string(), key.to_string());
+        let col_map = lock.entry(collection.to_string()).or_default();
 
-        if let Some(existing) = lock.get(&composite) {
+        if let Some(existing) = col_map.get(key) {
             if existing.hlc > new_ptr.hlc {
                 // Stale write rejected by Last-Write-Wins rule
                 return false;
             }
         }
 
-        lock.insert(composite, new_ptr);
+        col_map.insert(key.to_string(), new_ptr);
         true
     }
 
-    /// Returns the total number of entries currently indexed in memory.
+    /// Returns the total number of entries currently indexed in memory across all collections.
     pub fn len(&self) -> usize {
-        self.entries.read().len()
+        let lock = self.entries.read();
+        lock.values().map(|m| m.len()).sum()
     }
 
     /// Returns `true` if the index contains no entries.
     pub fn is_empty(&self) -> bool {
-        self.entries.read().is_empty()
+        let lock = self.entries.read();
+        lock.values().all(|m| m.is_empty())
     }
 
     /// Returns all non-deleted keys currently stored under a given collection.
+    /// Only scans the targeted collection map rather than iterating all records in the database.
     pub fn keys_in_collection(&self, collection: &str) -> Vec<String> {
         let lock = self.entries.read();
-        lock.iter()
-            .filter(|((col, _), ptr)| col == collection && !ptr.is_tombstone)
-            .map(|((_, key), _)| key.clone())
-            .collect()
+        match lock.get(collection) {
+            Some(col_map) => col_map
+                .iter()
+                .filter(|(_, ptr)| !ptr.is_tombstone)
+                .map(|(k, _)| k.clone())
+                .collect(),
+            None => Vec::new(),
+        }
     }
 
     /// Returns a snapshot of all pointers currently in the index (used for compaction).
     pub fn snapshot(&self) -> Vec<((String, String), RecordPointer)> {
         let lock = self.entries.read();
-        lock.iter().map(|(k, v)| (k.clone(), *v)).collect()
+        let total_len: usize = lock.values().map(|m| m.len()).sum();
+        let mut result = Vec::with_capacity(total_len);
+        for (col, map) in lock.iter() {
+            for (key, ptr) in map.iter() {
+                result.push(((col.clone(), key.clone()), *ptr));
+            }
+        }
+        result
     }
 
     /// Clears the entire index.

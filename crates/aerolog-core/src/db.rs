@@ -142,11 +142,11 @@ impl AeroLogDb {
             None => return Ok(None),
         };
 
-        let record = self
+        let value = self
             .inner
             .reader
-            .read_record(ptr.file_id, ptr.offset, ptr.length)?;
-        Ok(Some(record.value))
+            .read_value(ptr.file_id, ptr.offset, ptr.length)?;
+        Ok(Some(value))
     }
 
     /// Retrieves the complete [`Record`] including header metadata and HLC timestamp.
@@ -232,26 +232,34 @@ impl AeroLogDb {
         limit: usize,
     ) -> Result<Vec<Record>> {
         self.check_open()?;
-        let mut candidates = Vec::new();
+        let mut candidates = Vec::with_capacity(limit.min(1024));
 
         let active_file_id = self.inner.writer.lock().active_file_id();
 
-        // Scan each segment sequentially
+        // Scan each segment sequentially using streaming reader with early exit
         for file_id in 1..=active_file_id {
-            if let Ok(records) = self.inner.reader.scan_segment(file_id) {
-                for (_, record) in records {
-                    if let Some(since) = since_hlc {
-                        if record.header.hlc > since {
-                            candidates.push(record);
-                        }
-                    } else {
-                        candidates.push(record);
-                    }
+            let mut reached_limit = false;
+            let _ = self
+                .inner
+                .reader
+                .scan_segment_streaming(file_id, |_, record| {
+                    let include = match since_hlc {
+                        Some(since) => record.header.hlc > since,
+                        None => true,
+                    };
 
-                    if candidates.len() >= limit {
-                        return Ok(candidates);
+                    if include {
+                        candidates.push(record);
+                        if candidates.len() >= limit {
+                            reached_limit = true;
+                            return Ok(false);
+                        }
                     }
-                }
+                    Ok(true)
+                });
+
+            if reached_limit {
+                break;
             }
         }
 
@@ -287,11 +295,13 @@ impl AeroLogDb {
         self.inner.sparse_index.clear();
 
         for file_id in 1..=active_file_id {
-            if let Ok(records) = self.inner.reader.scan_segment(file_id) {
-                for (offset, record) in records {
+            let _ = self
+                .inner
+                .reader
+                .scan_segment_streaming(file_id, |offset, record| {
                     if record.header.record_type == RecordType::StreamEntry {
                         let total_len = record.header.total_record_size() as u32;
-                        let stream_id = String::from_utf8_lossy(&record.key).to_string();
+                        let stream_id = String::from_utf8_lossy(&record.key);
                         let ptr = RecordPointer::new(
                             file_id,
                             offset,
@@ -303,8 +313,8 @@ impl AeroLogDb {
                             .sparse_index
                             .record_entry(&stream_id, record.header.hlc, ptr);
                     }
-                }
-            }
+                    Ok(true)
+                });
         }
         Ok(())
     }
@@ -371,40 +381,39 @@ impl AeroLogStream for StreamHandle {
 
     fn read_recent(&self, limit: usize) -> Result<Vec<StreamEntry>> {
         self.db.check_open()?;
-        let meta = match self.db.inner.sparse_index.get_metadata(&self.stream_id) {
-            Some(m) => m,
-            None => return Ok(Vec::new()),
-        };
-
-        if meta.total_entries == 0 {
-            return Ok(Vec::new());
-        }
-
-        let start_seq = meta.total_entries.saturating_sub(limit as u64);
-        let checkpoint = self
+        let (total_entries, checkpoint) = match self
             .db
             .inner
             .sparse_index
-            .find_checkpoint_before(&self.stream_id, start_seq);
+            .find_scan_plan(&self.stream_id, limit)
+        {
+            Some(plan) => plan,
+            None => return Ok(Vec::new()),
+        };
 
+        let start_seq = total_entries.saturating_sub(limit as u64);
         let (scan_file_id, scan_offset, checkpoint_seq) = match checkpoint {
             Some(cp) => (cp.file_id, cp.offset, cp.sequence),
             None => (1, 0, 0),
         };
 
         let active_file_id = self.db.inner.writer.lock().active_file_id();
-        let mut entries = Vec::new();
+        let mut entries = Vec::with_capacity(limit);
         let mut current_seq = checkpoint_seq;
 
         for fid in scan_file_id..=active_file_id {
-            if let Ok(records) = self.db.inner.reader.scan_segment(fid) {
-                for (offset, record) in records {
+            let stream_bytes = self.stream_id.as_bytes();
+            let _ = self
+                .db
+                .inner
+                .reader
+                .scan_segment_streaming(fid, |offset, record| {
                     if fid == scan_file_id && offset < scan_offset {
-                        continue;
+                        return Ok(true);
                     }
 
                     if record.header.record_type == RecordType::StreamEntry
-                        && record.key == self.stream_id.as_bytes()
+                        && record.key == stream_bytes
                     {
                         if current_seq >= start_seq {
                             entries.push(StreamEntry {
@@ -415,8 +424,8 @@ impl AeroLogStream for StreamHandle {
                         }
                         current_seq += 1;
                     }
-                }
-            }
+                    Ok(true)
+                });
         }
 
         // Return up to limit entries
@@ -428,12 +437,7 @@ impl AeroLogStream for StreamHandle {
     }
 
     fn total_entries(&self) -> u64 {
-        self.db
-            .inner
-            .sparse_index
-            .get_metadata(&self.stream_id)
-            .map(|m| m.total_entries)
-            .unwrap_or(0)
+        self.db.inner.sparse_index.total_entries(&self.stream_id)
     }
 
     fn stream_id(&self) -> &str {

@@ -62,9 +62,7 @@ impl RecoveryManager {
         let mut total_records = 0u64;
 
         for &file_id in &segment_ids {
-            let scanned_records = reader.scan_segment(file_id)?;
-
-            for (offset, record) in scanned_records {
+            reader.scan_segment_streaming(file_id, |offset, record| {
                 let total_len = record.header.total_record_size() as u32;
                 let hlc = record.header.hlc;
                 if hlc > latest_hlc {
@@ -73,26 +71,27 @@ impl RecoveryManager {
 
                 match record.header.record_type {
                     RecordType::Put => {
-                        let key_str = String::from_utf8_lossy(&record.key).to_string();
+                        let key_str = String::from_utf8_lossy(&record.key);
                         let (collection, key) = Self::split_composite_key(&key_str);
                         let ptr = RecordPointer::new(file_id, offset, total_len, hlc, false);
                         keydir.put(&collection, &key, ptr);
                     }
                     RecordType::Delete => {
-                        let key_str = String::from_utf8_lossy(&record.key).to_string();
+                        let key_str = String::from_utf8_lossy(&record.key);
                         let (collection, key) = Self::split_composite_key(&key_str);
                         let ptr = RecordPointer::new(file_id, offset, total_len, hlc, true);
                         keydir.put(&collection, &key, ptr);
                     }
                     RecordType::StreamEntry => {
-                        let stream_id = String::from_utf8_lossy(&record.key).to_string();
+                        let stream_id = String::from_utf8_lossy(&record.key);
                         let ptr = RecordPointer::new(file_id, offset, total_len, hlc, false);
                         sparse_index.record_entry(&stream_id, hlc, ptr);
                     }
                 }
 
                 total_records += 1;
-            }
+                Ok(true)
+            })?;
         }
 
         let active_file_id = segment_ids.last().copied().unwrap_or(1);
@@ -124,7 +123,11 @@ impl RecoveryManager {
         if let Some(pos) = split_pos {
             let col_escaped = &raw[..pos];
             let key = &raw[pos + 1..];
-            let col = col_escaped.replace("\\:", ":").replace("\\\\", "\\");
+            let col = if col_escaped.contains('\\') {
+                col_escaped.replace("\\:", ":").replace("\\\\", "\\")
+            } else {
+                col_escaped.to_string()
+            };
             (col, key.to_string())
         } else {
             ("default".to_string(), raw.to_string())
@@ -134,8 +137,12 @@ impl RecoveryManager {
     /// Formats collection and key into a single composite string: `collection:key`,
     /// escaping colons and backslashes in the collection name to ensure lossless round-tripping.
     pub fn make_composite_key(collection: &str, key: &str) -> String {
-        let escaped_col = collection.replace('\\', "\\\\").replace(':', "\\:");
-        format!("{escaped_col}:{key}")
+        if collection.contains('\\') || collection.contains(':') {
+            let escaped_col = collection.replace('\\', "\\\\").replace(':', "\\:");
+            format!("{escaped_col}:{key}")
+        } else {
+            format!("{collection}:{key}")
+        }
     }
 }
 

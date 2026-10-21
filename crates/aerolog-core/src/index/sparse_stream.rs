@@ -50,9 +50,15 @@ impl SparseStreamIndex {
     }
 
     /// Records an appended stream entry into the sparse index.
+    ///
+    /// Avoids heap allocations when appending to an already active stream.
     pub fn record_entry(&self, stream_id: &str, hlc: HlcTimestamp, pointer: RecordPointer) -> u64 {
         let mut lock = self.streams.write();
-        let meta = lock.entry(stream_id.to_string()).or_default();
+        let meta = if let Some(meta) = lock.get_mut(stream_id) {
+            meta
+        } else {
+            lock.entry(stream_id.to_string()).or_default()
+        };
 
         let seq = meta.total_entries;
         meta.total_entries += 1;
@@ -76,6 +82,36 @@ impl SparseStreamIndex {
     /// Retrieves stream metadata if the stream exists.
     pub fn get_metadata(&self, stream_id: &str) -> Option<StreamMetadata> {
         self.streams.read().get(stream_id).cloned()
+    }
+
+    /// Returns the total entry count for a stream without cloning its checkpoint tree.
+    pub fn total_entries(&self, stream_id: &str) -> u64 {
+        self.streams
+            .read()
+            .get(stream_id)
+            .map(|m| m.total_entries)
+            .unwrap_or(0)
+    }
+
+    /// Finds total entry count and the nearest checkpoint before the starting sequence
+    /// without cloning the checkpoint map.
+    pub fn find_scan_plan(
+        &self,
+        stream_id: &str,
+        limit: usize,
+    ) -> Option<(u64, Option<StreamCheckpoint>)> {
+        let lock = self.streams.read();
+        let meta = lock.get(stream_id)?;
+        if meta.total_entries == 0 {
+            return None;
+        }
+        let start_seq = meta.total_entries.saturating_sub(limit as u64);
+        let checkpoint = meta
+            .checkpoints
+            .range(..=start_seq)
+            .next_back()
+            .map(|(_, cp)| *cp);
+        Some((meta.total_entries, checkpoint))
     }
 
     /// Finds the nearest checkpoint at or before the requested sequence number.
