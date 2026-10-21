@@ -1,0 +1,27 @@
+[workspace]
+members = [
+    "crates/aerolog-core",
+    "crates/aerolog-cbor",
+    "crates/aerolog-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+authors = ["AeroLog Authors"]
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/untacorp/aerolog"
+homepage = "https://github.com/untacorp/aerolog"
+readme = "README.md"
+keywords = ["database", "embedded", "bitcask", "local-first", "nosql"]
+categories = ["database-implementations", "embedded-database"]
+
+[workspace.dependencies]
+crc32fast = "1.4"
+parking_lot = "0.12"
+thiserror = "2.0"
+byteorder = "1.5"
+log = "0.4"
+env_logger = "0.11"
+tempfile = "3.17"

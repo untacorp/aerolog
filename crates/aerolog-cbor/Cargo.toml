@@ -1,0 +1,13 @@
+[package]
+name = "aerolog-cbor"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lightweight zero-dependency CBOR (RFC 8949) encoder and decoder for AeroLog"
+
+[dependencies]
+thiserror = { workspace = true }
+byteorder = { workspace = true }
+
+[dev-dependencies]

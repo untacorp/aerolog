@@ -1,0 +1,18 @@
+[package]
+name = "aerolog-cli"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Command-line utility and benchmark suite for AeroLog"
+
+[[bin]]
+name = "aerolog"
+path = "src/main.rs"
+
+[dependencies]
+aerolog-core = { path = "../aerolog-core" }
+aerolog-cbor = { path = "../aerolog-cbor" }
+env_logger = { workspace = true }
+log = { workspace = true }
+tempfile = { workspace = true }

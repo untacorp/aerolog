@@ -1,0 +1,27 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+*.lock
+
+# IDE & Editor files
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Bindings and generated output
+bindings/kotlin/build/
+bindings/kotlin/.gradle/
+bindings/swift/.build/
+bindings/swift/.swiftpm/
+
+# Test output & temp directories
+tmp/
+*.tmp
+*.aerolog.test*
