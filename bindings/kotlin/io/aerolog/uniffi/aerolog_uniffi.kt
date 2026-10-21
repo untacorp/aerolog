@@ -906,7 +906,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_aerolog_uniffi_checksum_method_ffiaerologdb_scan_collection() and 0xFFFF) != 2980) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_aerolog_uniffi_checksum_method_ffiaerologdb_scan_mutations_since() and 0xFFFF) != 48637) {
+    if ((lib.uniffi_aerolog_uniffi_checksum_method_ffiaerologdb_scan_mutations_since() and 0xFFFF) != 15502) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_aerolog_uniffi_checksum_method_ffiaerologdb_shutdown() and 0xFFFF) != 40067) {
@@ -1426,7 +1426,7 @@ public interface FfiAeroLogDbInterface {
     fun `scanCollection`(`collection`: kotlin.String): List<FfiKeyValuePair>
     
     /**
-     * Scans all mutations strictly newer than the given timestamp (for AirDB sync).
+     * Scans all mutations strictly newer than the given timestamp (for distributed sync).
      */
     fun `scanMutationsSince`(`sincePhysicalTime`: kotlin.ULong?, `sinceLogicalCounter`: kotlin.UShort?, `sinceNodeHash`: kotlin.ULong?, `limit`: kotlin.UInt): List<FfiMutationRecord>
     
@@ -1695,7 +1695,7 @@ open class FfiAeroLogDb: Disposable, AutoCloseable, FfiAeroLogDbInterface
 
     
     /**
-     * Scans all mutations strictly newer than the given timestamp (for AirDB sync).
+     * Scans all mutations strictly newer than the given timestamp (for distributed sync).
      */
     @Throws(AeroLogFfiException::class)override fun `scanMutationsSince`(`sincePhysicalTime`: kotlin.ULong?, `sinceLogicalCounter`: kotlin.UShort?, `sinceNodeHash`: kotlin.ULong?, `limit`: kotlin.UInt): List<FfiMutationRecord> {
             return FfiConverterSequenceTypeFfiMutationRecord.lift(
@@ -2209,7 +2209,7 @@ public object FfiConverterTypeFfiKeyValuePair: FfiConverterRustBuffer<FfiKeyValu
 
 
 /**
- * UniFFI-compatible representation of a replicated mutation record for AirDB.
+ * UniFFI-compatible representation of a replicated mutation record for distributed sync.
  */
 data class FfiMutationRecord (
     var `key`: kotlin.String

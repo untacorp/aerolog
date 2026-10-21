@@ -664,7 +664,7 @@ public protocol FfiAeroLogDbProtocol: AnyObject, Sendable {
     func scanCollection(collection: String) throws  -> [FfiKeyValuePair]
     
     /**
-     * Scans all mutations strictly newer than the given timestamp (for AirDB sync).
+     * Scans all mutations strictly newer than the given timestamp (for distributed sync).
      */
     func scanMutationsSince(sincePhysicalTime: UInt64?, sinceLogicalCounter: UInt16?, sinceNodeHash: UInt64?, limit: UInt32) throws  -> [FfiMutationRecord]
     
@@ -855,7 +855,7 @@ open func scanCollection(collection: String)throws  -> [FfiKeyValuePair]  {
 }
     
     /**
-     * Scans all mutations strictly newer than the given timestamp (for AirDB sync).
+     * Scans all mutations strictly newer than the given timestamp (for distributed sync).
      */
 open func scanMutationsSince(sincePhysicalTime: UInt64?, sinceLogicalCounter: UInt16?, sinceNodeHash: UInt64?, limit: UInt32)throws  -> [FfiMutationRecord]  {
     return try  FfiConverterSequenceTypeFfiMutationRecord.lift(try rustCallWithError(FfiConverterTypeAeroLogFfiError_lift) {
@@ -1232,7 +1232,7 @@ public func FfiConverterTypeFfiKeyValuePair_lower(_ value: FfiKeyValuePair) -> R
 
 
 /**
- * UniFFI-compatible representation of a replicated mutation record for AirDB.
+ * UniFFI-compatible representation of a replicated mutation record for distributed sync.
  */
 public struct FfiMutationRecord: Equatable, Hashable {
     public var key: String
@@ -1654,7 +1654,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_aerolog_uniffi_checksum_method_ffiaerologdb_scan_collection() != 2980) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_aerolog_uniffi_checksum_method_ffiaerologdb_scan_mutations_since() != 48637) {
+    if (uniffi_aerolog_uniffi_checksum_method_ffiaerologdb_scan_mutations_since() != 15502) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_aerolog_uniffi_checksum_method_ffiaerologdb_shutdown() != 40067) {

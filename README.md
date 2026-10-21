@@ -43,7 +43,7 @@ AeroLog natively supports both:
 ```
 +-----------------------------------------------------------------------------+
 |                         Application / P2P Mesh Layer                        |
-|        (AirDB Replication, Messaging Streams, Edge POS, Sensor Logs)        |
+|       (Distributed Replication, Messaging Streams, Edge POS, Sensor Logs)   |
 +--------------------------------------+--------------------------------------+
                                        |
 +--------------------------------------v--------------------------------------+

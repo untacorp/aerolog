@@ -55,7 +55,7 @@ pub struct FfiKeyValuePair {
     pub value: Vec<u8>,
 }
 
-/// UniFFI-compatible representation of a replicated mutation record for AirDB.
+/// UniFFI-compatible representation of a replicated mutation record for distributed sync.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiMutationRecord {
     pub key: String,
@@ -200,7 +200,7 @@ impl FfiAeroLogDb {
             .collect())
     }
 
-    /// Scans all mutations strictly newer than the given timestamp (for AirDB sync).
+    /// Scans all mutations strictly newer than the given timestamp (for distributed sync).
     pub fn scan_mutations_since(
         &self,
         since_physical_time: Option<u64>,

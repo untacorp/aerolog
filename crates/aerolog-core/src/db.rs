@@ -225,7 +225,7 @@ impl AeroLogDb {
         Ok(results)
     }
 
-    /// Scans all local mutations strictly newer than `since_hlc` (used by AirDB replication).
+    /// Scans all local mutations strictly newer than `since_hlc` (used for delta replication).
     pub fn scan_mutations_since(
         &self,
         since_hlc: Option<HlcTimestamp>,

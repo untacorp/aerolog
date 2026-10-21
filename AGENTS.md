@@ -53,4 +53,4 @@ Welcome to **AeroLog**. This file outlines mandatory architectural constraints, 
 - **Track 3 (Zero-Dependency CBOR Codec)**: Pure Rust compact binary codec (`aerolog-cbor`) for efficient structured payload encoding.
 - **Track 4 (CLI Tool & Benchmark Suite)**: Standalone `aerolog-cli` binary with throughput benchmarking (`bench`), inspection (`inspect`), and diagnostics (`dump`).
 - **Track 5 (UniFFI Cross-Platform Bindings)**: Native Kotlin (Android/JVM) and Swift (iOS/macOS) bindings with automated tests.
-- **Track 6 (AirDB Clean Adapter)**: Drop-in `AeroLogAirDbAdapter` implementing AirDB's `AirDbAdapter` persistence contract.
+- **Track 6 (Ecosystem Integration)**: High-performance drop-in adapter contracts for distributed databases and local-first frameworks.
