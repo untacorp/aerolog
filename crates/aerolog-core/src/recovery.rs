@@ -104,17 +104,60 @@ impl RecoveryManager {
         })
     }
 
-    /// Splits a stored key formatted as `collection:key` into separate collection and key strings.
+    /// Splits a stored key formatted as `collection:key` into separate collection and key strings,
+    /// correctly handling escaped colons in collection names.
     pub fn split_composite_key(raw: &str) -> (String, String) {
-        if let Some(pos) = raw.find(':') {
-            (raw[..pos].to_string(), raw[pos + 1..].to_string())
+        let mut escaped = false;
+        let mut split_pos = None;
+
+        for (i, ch) in raw.char_indices() {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == ':' {
+                split_pos = Some(i);
+                break;
+            }
+        }
+
+        if let Some(pos) = split_pos {
+            let col_escaped = &raw[..pos];
+            let key = &raw[pos + 1..];
+            let col = col_escaped.replace("\\:", ":").replace("\\\\", "\\");
+            (col, key.to_string())
         } else {
             ("default".to_string(), raw.to_string())
         }
     }
 
-    /// Formats collection and key into a single composite string: `collection:key`.
+    /// Formats collection and key into a single composite string: `collection:key`,
+    /// escaping colons and backslashes in the collection name to ensure lossless round-tripping.
     pub fn make_composite_key(collection: &str, key: &str) -> String {
-        format!("{collection}:{key}")
+        let escaped_col = collection.replace('\\', "\\\\").replace(':', "\\:");
+        format!("{escaped_col}:{key}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_composite_key_roundtrip_with_colons() {
+        let (col, key) = ("mesh:devices:v1", "sensor:temp:01");
+        let composite = RecoveryManager::make_composite_key(col, key);
+        let (extracted_col, extracted_key) = RecoveryManager::split_composite_key(&composite);
+        assert_eq!(extracted_col, col);
+        assert_eq!(extracted_key, key);
+    }
+
+    #[test]
+    fn test_composite_key_roundtrip_plain() {
+        let (col, key) = ("users", "alice");
+        let composite = RecoveryManager::make_composite_key(col, key);
+        let (extracted_col, extracted_key) = RecoveryManager::split_composite_key(&composite);
+        assert_eq!(extracted_col, col);
+        assert_eq!(extracted_key, key);
     }
 }

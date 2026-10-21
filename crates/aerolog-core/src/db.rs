@@ -269,12 +269,44 @@ impl AeroLogDb {
             writer.roll_segment()?
         };
 
-        LogCompactor::compact(
+        let stats = LogCompactor::compact(
             &self.inner.base_dir,
             active_id,
             &self.inner.keydir,
             &self.inner.config,
-        )
+        )?;
+
+        // Rebuild sparse_index so stream checkpoints point to newly compacted offsets and files
+        self.rebuild_sparse_index()?;
+
+        Ok(stats)
+    }
+
+    fn rebuild_sparse_index(&self) -> Result<()> {
+        let active_file_id = self.inner.writer.lock().active_file_id();
+        self.inner.sparse_index.clear();
+
+        for file_id in 1..=active_file_id {
+            if let Ok(records) = self.inner.reader.scan_segment(file_id) {
+                for (offset, record) in records {
+                    if record.header.record_type == RecordType::StreamEntry {
+                        let total_len = record.header.total_record_size() as u32;
+                        let stream_id = String::from_utf8_lossy(&record.key).to_string();
+                        let ptr = RecordPointer::new(
+                            file_id,
+                            offset,
+                            total_len,
+                            record.header.hlc,
+                            false,
+                        );
+                        self.inner
+                            .sparse_index
+                            .record_entry(&stream_id, record.header.hlc, ptr);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Flushes all pending in-memory buffer writes to disk.

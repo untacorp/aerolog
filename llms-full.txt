@@ -75,14 +75,14 @@ class FfiStream {
 ## 3. Physical Binary Record Layout (32-Byte Header)
 
 ```
-0x00..0x03 : crc32            (u32 Little-Endian)
-0x04..0x0B : physical_time    (u64 Little-Endian)
-0x0C..0x0D : logical_counter  (u16 Little-Endian)
-0x0E..0x15 : node_id_hash     (u64 Little-Endian)
-0x16       : record_type      (u8: 1=Insert, 2=Tombstone, 3=StreamAppend)
-0x17..0x18 : key_len          (u16 Little-Endian)
-0x19..0x1A : collection_len   (u16 Little-Endian)
-0x1B..0x1E : val_len          (u32 Little-Endian)
-0x1F       : reserved         (u8: 0x00)
-Followed immediately by: collection bytes + key bytes + payload bytes.
+0x00..0x03 : crc32            (u32 Big-Endian)
+0x04..0x05 : magic            (u16 Big-Endian: 0x414C / "AL")
+0x06       : version          (u8: 0x01)
+0x07       : record_type      (u8: 0x00=Put, 0x01=Delete, 0x02=StreamEntry)
+0x08..0x0F : physical_time    (u64 Big-Endian)
+0x10..0x11 : logical_counter  (u16 Big-Endian)
+0x12..0x19 : node_id_hash     (u64 Big-Endian)
+0x1A..0x1B : key_len          (u16 Big-Endian)
+0x1C..0x1F : value_len        (u32 Big-Endian)
+Followed immediately by: key bytes (key_len) + payload bytes (value_len).
 ```

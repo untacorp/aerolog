@@ -184,5 +184,63 @@ fn test_stream_retention_policy_max_entries() {
 
     // Run compaction to apply MaxEntries(10) on sealed segments
     let stats = db.compact().unwrap();
-    assert!(stats.records_evicted > 0);
+    assert_eq!(stats.records_evicted, 40);
+
+    // Read the 10 most recent entries after compaction
+    let recent = stream.read_recent(10).unwrap();
+    assert_eq!(recent.len(), 10);
+    assert_eq!(recent[0].payload, b"Alert #0040");
+    assert_eq!(recent[9].payload, b"Alert #0049");
+}
+
+#[test]
+fn test_tombstone_ttl_compaction_preservation() {
+    let dir = tempdir().unwrap();
+    // Configure tombstone TTL: 1 hour (3600_000 ms)
+    let config = AeroLogConfig::new(0x606)
+        .with_max_segment_size(200)
+        .with_sync_mode(SyncMode::SyncOnWrite)
+        .with_tombstone_ttl_millis(Some(3_600_000));
+
+    let db = AeroLogDb::open(dir.path(), config).unwrap();
+
+    // Insert and delete key
+    db.put("users", "alice", b"initial_data".to_vec()).unwrap();
+    db.delete("users", "alice").unwrap();
+
+    // Compact: unexpired tombstone must be preserved
+    let stats = db.compact().unwrap();
+    // Original put is evicted, tombstone is retained
+    assert_eq!(stats.records_evicted, 1);
+
+    // Key must remain deleted
+    assert!(db.get("users", "alice").unwrap().is_none());
+}
+
+#[test]
+fn test_composite_key_with_colons_persistence() {
+    let dir = tempdir().unwrap();
+    let config = AeroLogConfig::new(0x707);
+    let db = AeroLogDb::open(dir.path(), config.clone()).unwrap();
+
+    // Collection and key both contain colons
+    db.put("mesh:devices:v1", "sensor:temp:01", b"24.5".to_vec())
+        .unwrap();
+
+    assert_eq!(
+        db.get("mesh:devices:v1", "sensor:temp:01")
+            .unwrap()
+            .unwrap(),
+        b"24.5"
+    );
+
+    // Reopen database and verify recovery restores identical collection and key
+    drop(db);
+    let db2 = AeroLogDb::open(dir.path(), config).unwrap();
+    assert_eq!(
+        db2.get("mesh:devices:v1", "sensor:temp:01")
+            .unwrap()
+            .unwrap(),
+        b"24.5"
+    );
 }

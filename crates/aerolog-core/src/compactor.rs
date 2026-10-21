@@ -20,7 +20,7 @@ use crate::log::reader::LogReader;
 use crate::log::segment::SegmentFile;
 use crate::log::writer::LogWriter;
 use crate::record::RecordType;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -73,12 +73,26 @@ impl LogCompactor {
         sealed_files.sort_unstable();
 
         // Collect all currently live pointers from KeyDir that reside in sealed files
-        let live_pointers: HashSet<(u32, u64)> = keydir
+        let live_pointers: HashMap<(u32, u64), RecordPointer> = keydir
             .snapshot()
             .into_iter()
-            .filter(|(_, ptr)| !ptr.is_tombstone && ptr.file_id < active_file_id)
-            .map(|(_, ptr)| (ptr.file_id, ptr.offset))
+            .filter(|(_, ptr)| ptr.file_id < active_file_id)
+            .map(|(_, ptr)| ((ptr.file_id, ptr.offset), ptr))
             .collect();
+
+        // Pre-count total stream entries across all sealed files to correctly retain the N newest entries
+        let reader = LogReader::new(base_dir);
+        let mut total_stream_entries: HashMap<String, u64> = HashMap::new();
+        for &file_id in &sealed_files {
+            if let Ok(records) = reader.scan_segment(file_id) {
+                for (_, record) in records {
+                    if record.header.record_type == RecordType::StreamEntry {
+                        let stream_id = String::from_utf8_lossy(&record.key).to_string();
+                        *total_stream_entries.entry(stream_id).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
 
         // Write compacted data into a staging directory
         let staging_dir = base_dir.join(".compaction_staging");
@@ -93,7 +107,6 @@ impl LogCompactor {
             config.max_segment_size,
             SyncMode::SyncOnWrite,
         )?;
-        let reader = LogReader::new(base_dir);
 
         let mut records_evicted = 0u64;
         let mut updated_pointers: Vec<((String, String), RecordPointer)> = Vec::new();
@@ -112,49 +125,57 @@ impl LogCompactor {
             for (offset, record) in records {
                 match record.header.record_type {
                     RecordType::Put => {
-                        if live_pointers.contains(&(file_id, offset)) {
-                            // Record is live: copy to compacted segment
-                            let key_str = String::from_utf8_lossy(&record.key).to_string();
-                            let (collection, key) =
-                                crate::recovery::RecoveryManager::split_composite_key(&key_str);
+                        if let Some(live_ptr) = live_pointers.get(&(file_id, offset)) {
+                            if !live_ptr.is_tombstone {
+                                // Record is live: copy to compacted segment
+                                let key_str = String::from_utf8_lossy(&record.key).to_string();
+                                let (collection, key) =
+                                    crate::recovery::RecoveryManager::split_composite_key(&key_str);
 
-                            let (new_file_id, new_offset, new_len) =
-                                compactor_writer.append(&record)?;
-                            let new_ptr = RecordPointer::new(
-                                new_file_id,
-                                new_offset,
-                                new_len,
-                                record.header.hlc,
-                                false,
-                            );
-                            updated_pointers.push(((collection, key), new_ptr));
+                                let (new_file_id, new_offset, new_len) =
+                                    compactor_writer.append(&record)?;
+                                let new_ptr = RecordPointer::new(
+                                    new_file_id,
+                                    new_offset,
+                                    new_len,
+                                    record.header.hlc,
+                                    false,
+                                );
+                                updated_pointers.push(((collection, key), new_ptr));
+                            } else {
+                                records_evicted += 1;
+                            }
                         } else {
                             records_evicted += 1;
                         }
                     }
                     RecordType::Delete => {
-                        // Tombstone: check if tombstone TTL is configured
-                        if let Some(ttl) = config.tombstone_ttl_millis {
-                            if current_time_ms > record.header.hlc.physical_time + ttl {
+                        if let Some(live_ptr) = live_pointers.get(&(file_id, offset)) {
+                            if live_ptr.is_tombstone {
+                                // Tombstone: check if tombstone TTL is configured
+                                if let Some(ttl) = config.tombstone_ttl_millis {
+                                    if current_time_ms > record.header.hlc.physical_time + ttl {
+                                        records_evicted += 1;
+                                        continue;
+                                    }
+                                }
+                                // If no TTL or not expired yet, preserve tombstone in KeyDir and segment
+                                let (new_file_id, new_offset, new_len) =
+                                    compactor_writer.append(&record)?;
+                                let key_str = String::from_utf8_lossy(&record.key).to_string();
+                                let (collection, key) =
+                                    crate::recovery::RecoveryManager::split_composite_key(&key_str);
+                                let new_ptr = RecordPointer::new(
+                                    new_file_id,
+                                    new_offset,
+                                    new_len,
+                                    record.header.hlc,
+                                    true,
+                                );
+                                updated_pointers.push(((collection, key), new_ptr));
+                            } else {
                                 records_evicted += 1;
-                                continue;
                             }
-                        }
-                        // If no TTL or not expired yet, preserve if active in KeyDir
-                        if live_pointers.contains(&(file_id, offset)) {
-                            let (new_file_id, new_offset, new_len) =
-                                compactor_writer.append(&record)?;
-                            let key_str = String::from_utf8_lossy(&record.key).to_string();
-                            let (collection, key) =
-                                crate::recovery::RecoveryManager::split_composite_key(&key_str);
-                            let new_ptr = RecordPointer::new(
-                                new_file_id,
-                                new_offset,
-                                new_len,
-                                record.header.hlc,
-                                true,
-                            );
-                            updated_pointers.push(((collection, key), new_ptr));
                         } else {
                             records_evicted += 1;
                         }
@@ -169,9 +190,12 @@ impl LogCompactor {
                                 current_time_ms <= record.header.hlc.physical_time + ttl
                             }
                             RetentionPolicy::MaxEntries(max) => {
-                                let count = stream_counts.entry(stream_id.clone()).or_insert(0);
-                                *count += 1;
-                                *count <= *max
+                                let total =
+                                    total_stream_entries.get(&stream_id).copied().unwrap_or(0);
+                                let to_skip = total.saturating_sub(*max);
+                                let seen = stream_counts.entry(stream_id.clone()).or_insert(0);
+                                *seen += 1;
+                                *seen > to_skip
                             }
                         };
 
@@ -199,6 +223,18 @@ impl LogCompactor {
             let old_path = base_dir.join(SegmentFile::filename_for_id(file_id));
             if old_path.exists() {
                 let _ = std::fs::remove_file(old_path);
+            }
+        }
+
+        // Ensure compacted files do not collide with or overwrite the active segment
+        for entry in std::fs::read_dir(&staging_dir)? {
+            let entry = entry?;
+            if let Some(fid) = SegmentFile::parse_file_id(&entry.path()) {
+                if fid >= active_file_id {
+                    return Err(crate::error::AeroLogError::CompactionError(format!(
+                        "Compaction produced segment ID {fid} which collides with active segment {active_file_id}"
+                    )));
+                }
             }
         }
 
