@@ -4,6 +4,11 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme.workspace = true
 description = "Lightweight zero-dependency CBOR (RFC 8949) encoder and decoder for AeroLog"
 
 [dependencies]

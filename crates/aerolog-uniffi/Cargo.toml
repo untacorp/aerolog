@@ -4,13 +4,18 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme.workspace = true
 description = "Universal FFI bindings bridge (Mozilla UniFFI) for AeroLog targeting Kotlin and Swift"
 
 [lib]
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
-aerolog-core = { path = "../aerolog-core" }
+aerolog-core = { path = "../aerolog-core", version = "0.1.0" }
 uniffi = { version = "0.32", features = ["cli"] }
 thiserror = { workspace = true }
 

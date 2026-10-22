@@ -1,0 +1,153 @@
+name: Release & Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish_crates:
+        description: 'Publish crates to crates.io'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-binaries:
+    name: Build Binary (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary_name: aerolog
+            archive_suffix: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary_name: aerolog
+            archive_suffix: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            binary_name: aerolog
+            archive_suffix: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary_name: aerolog.exe
+            archive_suffix: zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build aerolog-cli binary
+        run: cargo build --release -p aerolog-cli --target ${{ matrix.target }}
+
+      - name: Package Unix Archive
+        if: matrix.os != 'windows-latest'
+        run: |
+          RELEASE_DIR="aerolog-${{ matrix.target }}"
+          mkdir -p "$RELEASE_DIR"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "$RELEASE_DIR/"
+          cp README.md LICENSE "$RELEASE_DIR/"
+          tar -czvf "aerolog-${{ matrix.target }}.tar.gz" "$RELEASE_DIR"
+        shell: bash
+
+      - name: Package Windows Archive
+        if: matrix.os == 'windows-latest'
+        run: |
+          $RELEASE_DIR = "aerolog-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path $RELEASE_DIR
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" -Destination $RELEASE_DIR
+          Copy-Item README.md, LICENSE -Destination $RELEASE_DIR
+          Compress-Archive -Path $RELEASE_DIR -DestinationPath "aerolog-${{ matrix.target }}.zip"
+        shell: pwsh
+
+      - name: Upload Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: aerolog-${{ matrix.target }}.${{ matrix.archive_suffix }}
+
+  create-github-release:
+    name: Create GitHub Release
+    needs: build-release-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          merge-multiple: true
+          path: release-artifacts
+
+      - name: Generate Checksums
+        run: |
+          cd release-artifacts
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-artifacts/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-crates:
+    name: Publish to Crates.io
+    needs: create-github-release
+    if: github.event_name == 'push' || inputs.publish_crates == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish workspace crates to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "CARGO_REGISTRY_TOKEN secret is not set. Skipping crates.io publishing."
+            exit 0
+          fi
+
+          echo "Publishing aerolog-cbor..."
+          cargo publish -p aerolog-cbor
+
+          echo "Waiting 20 seconds for crates.io index propagation..."
+          sleep 20
+
+          echo "Publishing aerolog-core..."
+          cargo publish -p aerolog-core
+
+          echo "Waiting 20 seconds for crates.io index propagation..."
+          sleep 20
+
+          echo "Publishing aerolog-uniffi..."
+          cargo publish -p aerolog-uniffi
+
+          echo "Waiting 20 seconds for crates.io index propagation..."
+          sleep 20
+
+          echo "Publishing aerolog-cli..."
+          cargo publish -p aerolog-cli
+
+          echo "All AeroLog crates published successfully."
