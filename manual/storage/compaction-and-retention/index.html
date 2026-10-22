@@ -1780,23 +1780,23 @@
 <hr />
 <h2 id="the-log-compaction-process">The Log Compaction Process</h2>
 <p>Compaction runs in the background or can be triggered explicitly via <code>db.compact()</code>:</p>
-<pre class="mermaid"><code>flowchart LR
+<pre class="mermaid"><code>flowchart TD
     subgraph SealedFiles ["Sealed Segment Files"]
-        S0["data-000000.aerolog&lt;br/&gt;(Contains old versions &amp; tombstones)"]
-        S1["data-000001.aerolog&lt;br/&gt;(Contains mixed records)"]
+        S0["data-000000.aerolog&lt;br/&gt;(Dead records &amp; tombstones)"]
+        S1["data-000001.aerolog&lt;br/&gt;(Historical mixed records)"]
     end
 
     subgraph CompactorWorker ["Compactor Engine"]
-        CW["Scan Records&lt;br/&gt;Compare with KeyDir &amp; Stream Retention"]
+        CW["Scan Sealed Records&lt;br/&gt;Filter against KeyDir &amp; Retention Rules"]
     end
 
-    subgraph Output ["Compacted Segment"]
-        CS["data-000002.aerolog&lt;br/&gt;(Only latest alive records)"]
+    subgraph Output ["Compacted Segment File"]
+        CS["data-000002.aerolog&lt;br/&gt;(Only active live records)"]
     end
 
     SealedFiles --&gt; CompactorWorker
     CompactorWorker --&gt; Output
-    CompactorWorker -. Delete Old Files .-&gt; SealedFiles</code></pre>
+    CompactorWorker -. Delete Reclaimed Segments .-&gt; SealedFiles</code></pre>
 <h3 id="compaction-execution-steps">Compaction Execution Steps</h3>
 <ol>
 <li>The compactor identifies all sealed segment files. (The active segment being written to is left untouched).</li>

@@ -101,3 +101,33 @@
   background-color: var(--md-default-bg-color--lighter);
   font-weight: 650;
 }
+
+/* Mermaid Diagram Containment & Responsive Typography */
+.mermaid {
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 1.5rem 0;
+  max-width: 100%;
+}
+
+.mermaid svg {
+  max-width: 100% !important;
+  height: auto !important;
+  font-family: inherit !important;
+}
+
+.mermaid .label,
+.mermaid .nodeLabel,
+.mermaid span.nodeLabel {
+  display: inline-block;
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  line-height: 1.4 !important;
+}
+
+.mermaid .noteText,
+.mermaid .actor {
+  font-size: 0.82rem !important;
+}

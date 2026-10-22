@@ -1768,13 +1768,13 @@
 <h2 id="architectural-bridge">Architectural Bridge</h2>
 <pre class="mermaid"><code>flowchart TD
     subgraph HostLang ["Host Platform Layer"]
-        K1["Kotlin / Android Runtime (JNA)"]
-        S1["Swift / Apple Runtime (C-FFI / ARC)"]
+        K1["Kotlin / Android Runtime&lt;br/&gt;(JNA Binding)"]
+        S1["Swift / Apple Runtime&lt;br/&gt;(C-FFI / ARC Binding)"]
     end
 
     subgraph UniFFIBoundary ["UniFFI Bridge Boundary"]
-        U1["Foreign Scaffolding &amp; RustBuffer Serialization"]
-        U2["Foreign Object Handle Table (Arc&lt;T&gt;)"]
+        U1["Foreign Scaffolding &amp;&lt;br/&gt;RustBuffer Serialization"]
+        U2["Foreign Object Handle Table&lt;br/&gt;(Arc Handles)"]
     end
 
     subgraph NativeRust ["Rust Engine Core"]

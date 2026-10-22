@@ -1795,9 +1795,9 @@ pt_1 = pt_2 \land lc_1 = lc_2 \land node_1 \lt node_2
     participant NodeA as Node A (Local)
     participant NodeB as Node B (Remote)
 
-    NodeB-&gt;&gt;NodeA: Send ChangeRecord (HLC: pt_b, lc_b, node_b)
-    Note over NodeA: Update Local HLC Generator:&lt;br/&gt;max(local_pt, remote_pt, wall_clock)&lt;br/&gt;Increment logical counter if equal
-    NodeA-&gt;&gt;NodeA: Apply ChangeRecord to Segment &amp; KeyDir</code></pre>
+    NodeB-&gt;&gt;NodeA: Send ChangeRecord&lt;br/&gt;(HLC: pt_b, lc_b, node_b)
+    Note over NodeA: Update Local HLC:&lt;br/&gt;max(local_pt, remote_pt, wall_clock)&lt;br/&gt;Increment logical counter if equal
+    NodeA-&gt;&gt;NodeA: Apply ChangeRecord to&lt;br/&gt;Segment &amp; KeyDir</code></pre>
 <ol>
 <li>The local clock generator observes <code>(pt_b, lc_b)</code>.</li>
 <li>The local clock updates its internal state: <span class="arithmatex">\(\text{next\_pt} = \max(\text{local\_pt}, \text{remote\_pt}, \text{current\_wall\_clock})\)</span>.</li>
