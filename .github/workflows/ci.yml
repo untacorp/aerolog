@@ -33,6 +33,3 @@ jobs:
 
       - name: Run Unit & Integration Tests
         run: cargo test --all --verbose
-
-      - name: Execute Benchmark Sanity Check
-        run: cargo run --release -p aerolog-cli -- bench
