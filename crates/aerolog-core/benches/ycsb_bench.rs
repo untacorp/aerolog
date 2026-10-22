@@ -22,7 +22,8 @@
 //! - Workload F (Read-Modify-Write): User database with balance updates
 
 use aerolog_core::{AeroLogConfig, AeroLogDb, SyncMode};
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use std::hint::black_box;
 use tempfile::tempdir;
 
 fn setup_benchmark_db(initial_records: usize) -> (tempfile::TempDir, AeroLogDb) {

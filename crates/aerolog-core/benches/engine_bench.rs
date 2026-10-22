@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use aerolog_core::{AeroLogConfig, AeroLogDb, SyncMode};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::hint::black_box;
 use tempfile::tempdir;
 
 fn bench_sequential_puts(c: &mut Criterion) {
