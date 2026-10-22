@@ -15,168 +15,513 @@
 use aerolog_core::log::reader::LogReader;
 use aerolog_core::log::segment::SegmentFile;
 use aerolog_core::{AeroLogConfig, AeroLogDb, SyncMode};
-use std::env;
-use std::path::Path;
-use std::time::Instant;
-use tempfile::tempdir;
+use clap::{Parser, Subcommand};
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "aerolog",
+    author = "AeroLog Authors",
+    version = "0.1.0",
+    about = "Production command-line interface and diagnostic utility for AeroLog",
+    long_about = "Fast, pure Rust CLI tool to inspect, read, write, and manage AeroLog databases and streams."
+)]
+struct Cli {
+    /// Path to the AeroLog database directory.
+    #[arg(short, long, default_value = "./aerolog_data", global = true)]
+    db: PathBuf,
+
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Store a key-value record in a collection.
+    Put {
+        /// Collection name (e.g. 'users', 'sensors').
+        collection: String,
+        /// Entity key.
+        key: String,
+        /// Value payload (UTF-8 text, JSON, or binary bytes).
+        value: String,
+    },
+
+    /// Retrieve a value by collection and key.
+    Get {
+        /// Collection name.
+        collection: String,
+        /// Entity key.
+        key: String,
+    },
+
+    /// Soft-delete a key by appending an immutable tombstone record.
+    Delete {
+        /// Collection name.
+        collection: String,
+        /// Entity key.
+        key: String,
+    },
+
+    /// Scan and display all live key-value pairs in a collection.
+    Scan {
+        /// Collection name.
+        collection: String,
+    },
+
+    /// Manage append-only event streams.
+    Stream {
+        #[command(subcommand)]
+        command: StreamSubcommands,
+    },
+
+    /// Perform segment compaction and tombstone garbage collection.
+    Compact,
+
+    /// Inspect physical storage segments, disk usage, and record statistics.
+    Inspect,
+
+    /// Dump all decoded physical records from disk to stdout.
+    Dump,
+
+    /// Launch an interactive database shell (REPL).
+    Repl,
+}
+
+#[derive(Subcommand, Debug)]
+enum StreamSubcommands {
+    /// Append an event payload to an append-only stream partition.
+    Append {
+        /// Unique stream partition identifier.
+        stream_id: String,
+        /// Payload content to append.
+        payload: String,
+    },
+
+    /// Read the most recent entries from a stream partition.
+    Read {
+        /// Unique stream partition identifier.
+        stream_id: String,
+        /// Maximum number of recent entries to retrieve.
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+    },
+
+    /// Display metadata and total entry count for a stream partition.
+    Info {
+        /// Unique stream partition identifier.
+        stream_id: String,
+    },
+}
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let command = args.get(1).map(|s| s.as_str()).unwrap_or("help");
+    let cli = Cli::parse();
 
-    match command {
-        "bench" => run_benchmark(),
-        "inspect" => {
-            if let Some(path) = args.get(2) {
-                inspect_database(Path::new(path));
-            } else {
-                eprintln!("Usage: aerolog inspect <directory_path>");
+    match cli.command {
+        Some(Commands::Put {
+            collection,
+            key,
+            value,
+        }) => {
+            let db = open_db(&cli.db);
+            match db.put(&collection, &key, value.into_bytes()) {
+                Ok(hlc) => println!("OK [HLC: {hlc}]"),
+                Err(err) => eprintln!("Error: {err}"),
             }
         }
-        "dump" => {
-            if let Some(path) = args.get(2) {
-                dump_database(Path::new(path));
-            } else {
-                eprintln!("Usage: aerolog dump <directory_path>");
+        Some(Commands::Get { collection, key }) => {
+            let db = open_db(&cli.db);
+            match db.get(&collection, &key) {
+                Ok(Some(val)) => print_payload(&val),
+                Ok(None) => {
+                    eprintln!("Key not found: {collection}:{key}");
+                    std::process::exit(1);
+                }
+                Err(err) => eprintln!("Error: {err}"),
             }
         }
-        _ => print_help(),
+        Some(Commands::Delete { collection, key }) => {
+            let db = open_db(&cli.db);
+            match db.delete(&collection, &key) {
+                Ok(hlc) => println!("DELETED [HLC: {hlc}]"),
+                Err(err) => eprintln!("Error: {err}"),
+            }
+        }
+        Some(Commands::Scan { collection }) => {
+            let db = open_db(&cli.db);
+            match db.scan_collection(&collection) {
+                Ok(pairs) => {
+                    println!("Collection: {collection} ({} items)", pairs.len());
+                    for (k, v) in pairs {
+                        let text = String::from_utf8_lossy(&v);
+                        println!("  {k} => {text}");
+                    }
+                }
+                Err(err) => eprintln!("Error: {err}"),
+            }
+        }
+        Some(Commands::Stream { command }) => {
+            let db = open_db(&cli.db);
+            handle_stream_command(&db, command);
+        }
+        Some(Commands::Compact) => {
+            let db = open_db(&cli.db);
+            println!("Starting background compaction on {:?}...", cli.db);
+            match db.compact() {
+                Ok(stats) => {
+                    let before_mb = stats.bytes_before as f64 / (1024.0 * 1024.0);
+                    let after_mb = stats.bytes_after as f64 / (1024.0 * 1024.0);
+                    let saved_pct = if stats.bytes_before > 0 {
+                        (stats.bytes_before - stats.bytes_after) as f64 / stats.bytes_before as f64
+                            * 100.0
+                    } else {
+                        0.0
+                    };
+                    println!("Compaction finished successfully:");
+                    println!("  Disk size before: {:.2} MB", before_mb);
+                    println!("  Disk size after : {:.2} MB", after_mb);
+                    println!("  Records evicted : {}", stats.records_evicted);
+                    println!("  Space reclaimed : {:.1}%", saved_pct);
+                }
+                Err(err) => eprintln!("Compaction failed: {err}"),
+            }
+        }
+        Some(Commands::Inspect) => {
+            inspect_database(&cli.db);
+        }
+        Some(Commands::Dump) => {
+            dump_database(&cli.db);
+        }
+        Some(Commands::Repl) | None => {
+            run_repl(&cli.db);
+        }
     }
 }
 
-fn print_help() {
-    println!("AeroLog CLI - Embedded Multi-Model Storage Engine");
-    println!("Usage:");
-    println!("  aerolog bench               Run throughput and latency benchmark");
-    println!("  aerolog inspect <path>      Display segment counts, sizes, and record statistics");
-    println!("  aerolog dump <path>         Dump all decoded records to stdout");
-}
-
-fn run_benchmark() {
-    println!("==================================================================");
-    println!("               AeroLog Embedded Storage Benchmark                 ");
-    println!("==================================================================");
-
-    let dir = tempdir().expect("Failed to create temporary directory for benchmark");
-    let total_operations = 50_000;
-
-    let config = AeroLogConfig::new(0x42)
+fn open_db(path: &Path) -> AeroLogDb {
+    let config = AeroLogConfig::new(0x4145524F)
         .with_sync_mode(SyncMode::Periodic)
         .with_max_segment_size(16 * 1024 * 1024);
 
-    let db = AeroLogDb::open(dir.path(), config).expect("Failed to open AeroLog database");
+    AeroLogDb::open(path, config).unwrap_or_else(|err| {
+        eprintln!("Failed to open database at {:?}: {}", path, err);
+        std::process::exit(1);
+    })
+}
 
-    // 1. Sequential Write Benchmark
-    println!(
-        "\n[1/3] Benchmarking Sequential Appends ({} records)...",
-        total_operations
-    );
-    let start_write = Instant::now();
-    for i in 0..total_operations {
-        let key = format!("entity_{i:06}");
-        let val = format!("{{\"id\": {i}, \"status\": \"active\", \"timestamp\": 1710928000}}")
-            .into_bytes();
-        db.put("benchmark", &key, val).expect("Put failed");
+fn handle_stream_command(db: &AeroLogDb, command: StreamSubcommands) {
+    match command {
+        StreamSubcommands::Append { stream_id, payload } => match db.get_stream(&stream_id) {
+            Ok(stream) => match stream.append(payload.into_bytes()) {
+                Ok((seq, hlc)) => println!("APPENDED [Seq: {seq}, HLC: {hlc}]"),
+                Err(err) => eprintln!("Error appending to stream: {err}"),
+            },
+            Err(err) => eprintln!("Error getting stream: {err}"),
+        },
+        StreamSubcommands::Read { stream_id, limit } => match db.get_stream(&stream_id) {
+            Ok(stream) => match stream.read_recent(limit) {
+                Ok(entries) => {
+                    println!("Stream: {stream_id} ({} recent entries)", entries.len());
+                    for e in entries {
+                        let text = String::from_utf8_lossy(&e.payload);
+                        println!("  [#{:06} | HLC: {}] {}", e.sequence, e.hlc, text);
+                    }
+                }
+                Err(err) => eprintln!("Error reading stream: {err}"),
+            },
+            Err(err) => eprintln!("Error: {err}"),
+        },
+        StreamSubcommands::Info { stream_id } => match db.get_stream(&stream_id) {
+            Ok(stream) => {
+                println!("Stream: {stream_id}");
+                println!("  Total entries: {}", stream.total_entries());
+            }
+            Err(err) => eprintln!("Error: {err}"),
+        },
     }
-    db.flush().expect("Flush failed");
-    let write_elapsed = start_write.elapsed();
-    let write_ops = (total_operations as f64) / write_elapsed.as_secs_f64();
+}
 
-    println!("  Time elapsed:       {:?}", write_elapsed);
-    println!("  Write throughput:   {:.2} ops/sec", write_ops);
-
-    // 2. Random Read Benchmark
-    println!(
-        "\n[2/3] Benchmarking Random Point Reads ({} queries)...",
-        total_operations
-    );
-    let start_read = Instant::now();
-    for i in (0..total_operations).step_by(2) {
-        let key = format!("entity_{i:06}");
-        let res = db.get("benchmark", &key).expect("Get failed");
-        assert!(res.is_some());
+fn print_payload(val: &[u8]) {
+    match std::str::from_utf8(val) {
+        Ok(text) => println!("{text}"),
+        Err(_) => {
+            // Hex fallback for non-UTF8 binary data
+            let hex: String = val.iter().map(|b| format!("{b:02X}")).collect();
+            println!("<binary {} bytes: {}>", val.len(), hex);
+        }
     }
-    let read_elapsed = start_read.elapsed();
-    let read_queries = total_operations / 2;
-    let read_ops = (read_queries as f64) / read_elapsed.as_secs_f64();
-
-    println!("  Time elapsed:       {:?}", read_elapsed);
-    println!("  Read throughput:    {:.2} ops/sec", read_ops);
-
-    // 3. Stream Append Benchmark
-    println!("\n[3/3] Benchmarking Append-Only Stream (20,000 messages)...");
-    let stream = db.get_stream("live-chat").expect("Stream failed");
-    let start_stream = Instant::now();
-    for i in 0..20_000 {
-        let msg = format!("ChatMessage {i} - offgrid mesh packet data payload").into_bytes();
-        stream.append(msg).expect("Stream append failed");
-    }
-    let stream_elapsed = start_stream.elapsed();
-    let stream_ops = 20_000.0 / stream_elapsed.as_secs_f64();
-
-    println!("  Time elapsed:       {:?}", stream_elapsed);
-    println!("  Stream throughput:  {:.2} ops/sec", stream_ops);
-
-    println!("\n==================================================================");
-    println!("  Benchmark complete: All data persisted with CRC32 integrity!   ");
-    println!("==================================================================");
 }
 
 fn inspect_database(path: &Path) {
-    println!("Inspecting AeroLog database at: {}", path.display());
+    println!("Inspecting AeroLog Database at {:?}", path);
     if !path.exists() {
-        eprintln!("Directory does not exist.");
+        eprintln!("Error: Path does not exist");
         return;
     }
 
-    let mut total_size = 0u64;
-    let mut segment_count = 0u32;
+    let mut segment_ids = Vec::new();
+    let mut total_bytes = 0u64;
 
     if let Ok(entries) = std::fs::read_dir(path) {
         for entry in entries.flatten() {
-            if let Some(file_id) = SegmentFile::parse_file_id(&entry.path()) {
-                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                total_size += size;
-                segment_count += 1;
-                println!(
-                    "  Segment file: data-{file_id:06}.aerolog (size: {size} bytes / {:.2} KB)",
-                    size as f64 / 1024.0
-                );
+            let p = entry.path();
+            if let Some(id) = SegmentFile::parse_file_id(&p) {
+                segment_ids.push(id);
+                if let Ok(meta) = entry.metadata() {
+                    total_bytes += meta.len();
+                }
             }
         }
     }
 
-    println!("\nTotal segments: {segment_count}");
+    segment_ids.sort_unstable();
+
+    println!("Total Segments : {}", segment_ids.len());
     println!(
-        "Total size on disk: {total_size} bytes ({:.2} MB)",
-        total_size as f64 / (1024.0 * 1024.0)
+        "Total Disk Size: {:.2} MB ({} bytes)",
+        total_bytes as f64 / (1024.0 * 1024.0),
+        total_bytes
     );
+
+    if let Some(&active_id) = segment_ids.last() {
+        println!("Active Segment : data-{active_id:06}.aerolog");
+    }
+
+    for &id in &segment_ids {
+        let p = path.join(SegmentFile::filename_for_id(id));
+        let size = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+        println!(
+            "  - data-{id:06}.aerolog (size: {:.2} KB)",
+            size as f64 / 1024.0
+        );
+    }
 }
 
 fn dump_database(path: &Path) {
+    if !path.exists() {
+        eprintln!("Error: Path {:?} does not exist", path);
+        return;
+    }
+
     let reader = LogReader::new(path);
+    let mut segment_ids = Vec::new();
+
     if let Ok(entries) = std::fs::read_dir(path) {
         for entry in entries.flatten() {
-            if let Some(file_id) = SegmentFile::parse_file_id(&entry.path()) {
-                println!("--- Segment {file_id:06} ---");
-                if let Ok(records) = reader.scan_segment(file_id) {
-                    for (offset, record) in records {
-                        let key_str = String::from_utf8_lossy(&record.key);
-                        let val_preview = if record.value.len() > 40 {
-                            format!(
-                                "{}... ({} B)",
-                                String::from_utf8_lossy(&record.value[..40]),
-                                record.value.len()
-                            )
-                        } else {
-                            String::from_utf8_lossy(&record.value).to_string()
-                        };
+            if let Some(id) = SegmentFile::parse_file_id(&entry.path()) {
+                segment_ids.push(id);
+            }
+        }
+    }
+    segment_ids.sort_unstable();
+
+    for id in segment_ids {
+        println!("=== Segment data-{id:06}.aerolog ===");
+        let _ = reader.scan_segment_streaming(id, |offset, record| {
+            let key_str = String::from_utf8_lossy(&record.key);
+            let val_str = String::from_utf8_lossy(&record.value);
+            println!(
+                "  @0x{offset:08X} [{:?}] key={key_str} val={val_str} hlc={}",
+                record.header.record_type, record.header.hlc
+            );
+            Ok(true)
+        });
+    }
+}
+
+fn run_repl(db_path: &Path) {
+    println!("==================================================================");
+    println!("             AeroLog Interactive Shell (REPL)                     ");
+    println!("==================================================================");
+    println!("Database: {:?}", db_path);
+    println!("Type 'HELP' for commands, 'EXIT' to quit.");
+    println!("------------------------------------------------------------------");
+
+    let db = open_db(db_path);
+    let stdin = io::stdin();
+
+    loop {
+        print!("aerolog> ");
+        let _ = io::stdout().flush();
+
+        let mut line = String::new();
+        if stdin.read_line(&mut line).is_err() || line.is_empty() {
+            break;
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        let cmd = parts[0].to_uppercase();
+
+        match cmd.as_str() {
+            "EXIT" | "QUIT" => {
+                println!("Closing database...");
+                let _ = db.close();
+                println!("Goodbye.");
+                break;
+            }
+            "HELP" => {
+                println!("Supported Commands:");
+                println!("  PUT <collection> <key> <value>    Store a key-value record");
+                println!("  GET <collection> <key>            Retrieve a record");
+                println!("  DELETE <collection> <key>         Soft-delete a record");
+                println!("  SCAN <collection>                 List all keys in a collection");
+                println!("  STREAM APPEND <id> <payload>      Append to stream partition");
+                println!("  STREAM READ <id> [limit]          Read recent events from stream");
+                println!("  STREAM INFO <id>                  Display stream event count");
+                println!("  COMPACT                           Reclaim space and merge segments");
+                println!("  INSPECT                           View segment files and disk size");
+                println!("  EXIT / QUIT                       Exit the shell");
+            }
+            "PUT" => {
+                if parts.len() < 4 {
+                    println!("Usage: PUT <collection> <key> <value>");
+                    continue;
+                }
+                let collection = parts[1];
+                let key = parts[2];
+                // Join the rest as the payload value
+                let val_index = trimmed
+                    .char_indices()
+                    .filter(|&(_, c)| !c.is_whitespace())
+                    .nth(3);
+                let value = if let Some((idx, _)) = val_index {
+                    &trimmed[idx..]
+                } else {
+                    parts[3]
+                };
+
+                match db.put(collection, key, value.as_bytes().to_vec()) {
+                    Ok(hlc) => println!("OK [HLC: {hlc}]"),
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+            }
+            "GET" => {
+                if parts.len() != 3 {
+                    println!("Usage: GET <collection> <key>");
+                    continue;
+                }
+                let collection = parts[1];
+                let key = parts[2];
+                match db.get(collection, key) {
+                    Ok(Some(val)) => print_payload(&val),
+                    Ok(None) => println!("(nil)"),
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+            }
+            "DELETE" => {
+                if parts.len() != 3 {
+                    println!("Usage: DELETE <collection> <key>");
+                    continue;
+                }
+                let collection = parts[1];
+                let key = parts[2];
+                match db.delete(collection, key) {
+                    Ok(hlc) => println!("DELETED [HLC: {hlc}]"),
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+            }
+            "SCAN" => {
+                if parts.len() != 2 {
+                    println!("Usage: SCAN <collection>");
+                    continue;
+                }
+                let collection = parts[1];
+                match db.scan_collection(collection) {
+                    Ok(pairs) => {
+                        println!("Collection '{}': {} records", collection, pairs.len());
+                        for (k, v) in pairs {
+                            println!("  {} => {}", k, String::from_utf8_lossy(&v));
+                        }
+                    }
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+            }
+            "STREAM" => {
+                if parts.len() < 3 {
+                    println!("Usage: STREAM APPEND|READ|INFO <stream_id> [args]");
+                    continue;
+                }
+                let action = parts[1].to_uppercase();
+                let stream_id = parts[2];
+
+                match action.as_str() {
+                    "APPEND" => {
+                        if parts.len() < 4 {
+                            println!("Usage: STREAM APPEND <stream_id> <payload>");
+                            continue;
+                        }
+                        let payload_text = parts[3..].join(" ");
+                        match db.get_stream(stream_id) {
+                            Ok(stream) => match stream.append(payload_text.into_bytes()) {
+                                Ok((seq, hlc)) => println!("APPENDED [Seq: {seq}, HLC: {hlc}]"),
+                                Err(e) => eprintln!("Error: {e}"),
+                            },
+                            Err(e) => eprintln!("Error: {e}"),
+                        }
+                    }
+                    "READ" => {
+                        let limit = parts
+                            .get(3)
+                            .and_then(|s| s.parse::<usize>().ok())
+                            .unwrap_or(10);
+                        match db.get_stream(stream_id) {
+                            Ok(stream) => match stream.read_recent(limit) {
+                                Ok(entries) => {
+                                    println!("Stream '{}' ({} entries):", stream_id, entries.len());
+                                    for e in entries {
+                                        println!(
+                                            "  [#{:06} | HLC: {}] {}",
+                                            e.sequence,
+                                            e.hlc,
+                                            String::from_utf8_lossy(&e.payload)
+                                        );
+                                    }
+                                }
+                                Err(e) => eprintln!("Error: {e}"),
+                            },
+                            Err(e) => eprintln!("Error: {e}"),
+                        }
+                    }
+                    "INFO" => match db.get_stream(stream_id) {
+                        Ok(stream) => {
+                            println!("Stream '{}': {} entries", stream_id, stream.total_entries());
+                        }
+                        Err(e) => eprintln!("Error: {e}"),
+                    },
+                    other => println!(
+                        "Unknown stream action '{}'. Use APPEND, READ, or INFO",
+                        other
+                    ),
+                }
+            }
+            "COMPACT" => {
+                println!("Running log compaction...");
+                match db.compact() {
+                    Ok(stats) => {
+                        let before_mb = stats.bytes_before as f64 / (1024.0 * 1024.0);
+                        let after_mb = stats.bytes_after as f64 / (1024.0 * 1024.0);
                         println!(
-                            "  [0x{offset:06X}] Type: {:?}, HLC: {}, Key: {}, Value: {}",
-                            record.header.record_type, record.header.hlc, key_str, val_preview
+                            "Compacted: {:.2} MB -> {:.2} MB ({} evicted)",
+                            before_mb, after_mb, stats.records_evicted
                         );
                     }
+                    Err(e) => eprintln!("Compaction failed: {e}"),
                 }
+            }
+            "INSPECT" => {
+                inspect_database(db_path);
+            }
+            unknown => {
+                println!(
+                    "Unknown command: '{}'. Type 'HELP' for available commands.",
+                    unknown
+                );
             }
         }
     }

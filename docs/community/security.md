@@ -15,7 +15,7 @@ Security updates and critical patches are actively applied to the following rele
 The AeroLog development team takes security and cryptographic integrity very seriously. If you discover a vulnerability, data corruption hazard, or security flaw:
 
 1. **Do not disclose the issue publicly** on GitHub Issues, pull requests, or discussion forums.
-2. Report the vulnerability privately to the maintainers at `security@untacorp.com` or via GitHub Private Vulnerability Reporting.
+2. Report the vulnerability securely and privately via **[GitHub Private Vulnerability Reporting](https://github.com/untacorp/aerolog/security/advisories/new)**. This ensures your report is received privately and securely by the maintainers without exposing personal email addresses.
 3. Provide detailed steps to reproduce the issue, including environment details (OS, architecture, Rust toolchain version) and proof-of-concept scripts if available.
 
 ### Response Timeline

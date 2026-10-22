@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 aerolog-core = { path = "../aerolog-core" }
 aerolog-cbor = { path = "../aerolog-cbor" }
+clap = { version = "4.5", features = ["derive"] }
 env_logger = { workspace = true }
 log = { workspace = true }
 tempfile = { workspace = true }
