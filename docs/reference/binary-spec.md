@@ -48,12 +48,19 @@ Immediately following byte `0x1F` of the header:
 | `value` | `value_len` | Raw Binary Payload (CBOR, JSON, binary blob) |
 
 Total record length on disk:
-$$\text{Total Bytes} = 32 + \text{key\_len} + \text{value\_len}$$
+
+$$
+\text{Total Bytes} = 32 + \text{key\_len} + \text{value\_len}
+$$
 
 ---
 
 ## 4. Checksum Calculation Scope
 
 The `crc32` field at bytes `0x00..0x03` protects all subsequent bytes of the record:
-$$\text{CRC32}(\text{bytes}[0x04 \dots 0x1F] \,\|\, \text{body\_bytes})$$
+
+$$
+\text{CRC32}(\text{bytes}[0x04 \dots 0x1F] \,\|\, \text{body\_bytes})
+$$
+
 During read operations, the engine calculates the checksum over this slice and asserts equality with `crc32`.

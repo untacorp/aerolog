@@ -13,7 +13,11 @@ Every record written to disk is prepended with a 32-bit CRC32 checksum computed 
 
 ### 2. Upfront Length Prefixes
 All variable-length fields (`key_len`, `collection_len`, `val_len`) are stored in the fixed 32-byte header. Before reading payloads into buffers, AeroLog validates that:
-$$\text{offset} + 32 + \text{key\_len} + \text{coll\_len} + \text{val\_len} \le \text{file\_size}$$
+
+$$
+\text{offset} + 32 + \text{key\_len} + \text{coll\_len} + \text{val\_len} \le \text{file\_size}
+$$
+
 This prevents buffer over-reads and segmentation faults when encountering malformed or partial writes.
 
 ---

@@ -20,12 +20,12 @@ Measured via native release performance suite (`cargo test --release --test perf
 
 | Benchmark Stage | Workload Type | Throughput (*ops/sec*) | Average Latency |
 | :--- | :--- | :--- | :--- |
-| **Sequential Point Writes** (`db.put`) | Append-only sequential log write | **264,677 writes/sec** | **3.78 $\mu\text{s}$** per write |
-| **Concurrent Ingestion** (4 Threads) | Multi-threaded write contention | **219,854 writes/sec** | **4.54 $\mu\text{s}$** per write |
-| **Random Point Reads** (`db.get`) | In-memory `KeyDir` seek + NVMe read | **73,749 reads/sec** | **13.56 $\mu\text{s}$** per read |
-| **Stream Event Appends** | Append-only bounded event stream | **520,820 msgs/sec** | **1.92 $\mu\text{s}$** per append |
-| **Stream Window Query** (`read_recent`) | Retrieve 500 latest entries via sparse index | **25,112 entries/sec** | **39.80 $\mu\text{s}$** per entry |
-| **Cold Crash Recovery** | Full segment replay and index rebuild | **1,187,695 records/sec** | **0.84 $\mu\text{s}$** per record |
+| **Sequential Point Writes** (`db.put`) | Append-only sequential log write | **264,677 writes/sec** | **3.78 µs** per write |
+| **Concurrent Ingestion** (4 Threads) | Multi-threaded write contention | **219,854 writes/sec** | **4.54 µs** per write |
+| **Random Point Reads** (`db.get`) | In-memory `KeyDir` seek + NVMe read | **73,749 reads/sec** | **13.56 µs** per read |
+| **Stream Event Appends** | Append-only bounded event stream | **520,820 msgs/sec** | **1.92 µs** per append |
+| **Stream Window Query** (`read_recent`) | Retrieve 500 latest entries via sparse index | **25,112 entries/sec** | **39.80 µs** per entry |
+| **Cold Crash Recovery** | Full segment replay and index rebuild | **1,187,695 records/sec** | **0.84 µs** per record |
 | **Compaction Space Reclaim** | Merge sealed files and evict dead records | **25,000 dead records evicted** | **296.8 ms** total duration |
 
 ---
@@ -36,10 +36,10 @@ Evaluated with Criterion.rs statistical harness across 10,000 pre-populated keys
 
 | Workload | Specification | Access Pattern | Mean Latency | Throughput |
 | :--- | :--- | :--- | :--- | :--- |
-| **Workload A** | 50% Read, 50% Update | Session Store / Update Heavy | **7.78 $\mu\text{s}$** | **128,520 ops/sec** |
-| **Workload B** | 95% Read, 5% Update | Photo Tagging / Read Mostly | **11.65 $\mu\text{s}$** | **85,803 ops/sec** |
-| **Workload C** | 100% Read | User Profile Cache / Read Only | **12.64 $\mu\text{s}$** | **79,055 ops/sec** |
-| **Workload F** | Read-Modify-Write | Balance Mutation & Record CAS | **14.65 $\mu\text{s}$** | **68,231 ops/sec** |
+| **Workload A** | 50% Read, 50% Update | Session Store / Update Heavy | **7.78 µs** | **128,520 ops/sec** |
+| **Workload B** | 95% Read, 5% Update | Photo Tagging / Read Mostly | **11.65 µs** | **85,803 ops/sec** |
+| **Workload C** | 100% Read | User Profile Cache / Read Only | **12.64 µs** | **79,055 ops/sec** |
+| **Workload F** | Read-Modify-Write | Balance Mutation & Record CAS | **14.65 µs** | **68,231 ops/sec** |
 
 ---
 

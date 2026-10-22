@@ -61,9 +61,9 @@ flowchart TD
 
 | Capability | Specification | Architectural Advantage |
 | :--- | :--- | :--- |
-| **Write Performance** | Pure Sequential $O(1)$ Append | $> 200\text{k}$ writes/sec; minimizes NAND flash memory wear |
+| **Write Performance** | Pure Sequential $O(1)$ Append | > 200,000 writes/sec; minimizes NAND flash memory wear |
 | **Point Read Latency** | Direct In-Memory Coordinate Seek | Single disk seek per key; zero B-Tree page traversal overhead |
-| **Memory Footprint** | Bounded $< 15\text{ MB}$ RSS | Dual-tier indexing keeps streaming logs from overflowing RAM |
+| **Memory Footprint** | Bounded < 15 MB RSS | Dual-tier indexing keeps streaming logs from overflowing RAM |
 | **Data Integrity** | Hardware CRC32-IEEE per Record | Instant torn-write isolation on sudden battery pull or crash |
 | **Causality & Sync** | Monotonic Hybrid Logical Clock | Deterministic Last-Write-Wins (LWW) without NTP dependencies |
 | **Structured Codec** | Zero-Dependency Binary CBOR | RFC 8949 compliance; no external C/C++ parser vulnerabilities |

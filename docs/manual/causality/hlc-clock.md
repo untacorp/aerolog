@@ -24,11 +24,13 @@ pub struct HlcTimestamp {
 
 AeroLog achieves a strict total ordering across all mutations using tuple comparison:
 
-$$H_1 < H_2 \iff \begin{cases}
-pt_1 < pt_2 \\
-pt_1 = pt_2 \land lc_1 < lc_2 \\
-pt_1 = pt_2 \land lc_1 = lc_2 \land node_1 < node_2
-\end{cases}$$
+$$
+H_1 \lt H_2 \iff \begin{cases}
+pt_1 \lt pt_2 \\
+pt_1 = pt_2 \land lc_1 \lt lc_2 \\
+pt_1 = pt_2 \land lc_1 = lc_2 \land node_1 \lt node_2
+\end{cases}
+$$
 
 Where:
 1. `physical_time` tracks the passage of wall-clock time.
@@ -52,6 +54,5 @@ sequenceDiagram
 ```
 
 1. The local clock generator observes `(pt_b, lc_b)`.
-2. The local clock updates its internal state:
-   $$\text{next\_pt} = \max(\text{local\_pt}, \text{remote\_pt}, \text{current\_wall\_clock})$$
+2. The local clock updates its internal state: $\text{next\_pt} = \max(\text{local\_pt}, \text{remote\_pt}, \text{current\_wall\_clock})$.
 3. This guarantees that any subsequent write produced locally is strictly greater than all previously observed remote events, ensuring causal consistency across wireless mesh networks.
