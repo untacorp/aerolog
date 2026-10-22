@@ -51,6 +51,22 @@ Welcome to **AeroLog**. This file outlines mandatory architectural constraints, 
 - **Track 1 (Core Storage & Bitcask Engine)**: Segment file manager, LogWriter, LogReader, CRC32, KeyDir, SparseStreamIndex, and crash recovery scanner.
 - **Track 2 (Compactor & Pluggable Retention)**: Background merge worker, tombstone purging, and declarative retention policies (`KeepAll`, `MaxEntries`, `TimeToLive`).
 - **Track 3 (Zero-Dependency CBOR Codec)**: Pure Rust compact binary codec (`aerolog-cbor`) for efficient structured payload encoding.
-- **Track 4 (CLI Tool & Benchmark Suite)**: Standalone `aerolog-cli` binary with throughput benchmarking (`bench`), inspection (`inspect`), and diagnostics (`dump`).
+- **Track 4 (CLI Tool & Benchmark Suite)**: Standalone `aerolog-cli` binary with interactive REPL (`repl`), CRUD subcommands, inspection (`inspect`), diagnostics (`dump`), and dedicated Criterion / YCSB benchmark suites (`cargo bench`).
 - **Track 5 (UniFFI Cross-Platform Bindings)**: Native Kotlin (Android/JVM) and Swift (iOS/macOS) bindings with automated tests.
 - **Track 6 (Ecosystem Integration)**: High-performance drop-in adapter contracts for distributed databases and local-first frameworks.
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues tracked via `gh` CLI in `untacorp/aerolog`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical triage roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) combined with `@forunta` taxonomy. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout (`CONTEXT.md` at repo root and ADRs in `docs/community/adr/`). See `docs/agents/domain.md`.

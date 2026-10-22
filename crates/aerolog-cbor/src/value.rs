@@ -68,19 +68,13 @@ impl CborValue {
 
     /// Looks up a value in a map using a string key.
     pub fn get_field(&self, key: &str) -> Option<&CborValue> {
-        match self {
-            Self::Map(entries) => {
-                for (k, v) in entries {
-                    if let Self::Text(k_str) = k {
-                        if k_str == key {
-                            return Some(v);
-                        }
-                    }
-                }
-                None
-            }
+        let Self::Map(entries) = self else {
+            return None;
+        };
+        entries.iter().find_map(|(k, v)| match k {
+            Self::Text(s) if s == key => Some(v),
             _ => None,
-        }
+        })
     }
 }
 

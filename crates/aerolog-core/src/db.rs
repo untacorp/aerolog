@@ -13,18 +13,20 @@
 // limitations under the License.
 
 use crate::compactor::{CompactionStats, LogCompactor};
-use crate::config::AeroLogConfig;
+use crate::config::{AeroLogConfig, RetentionPolicy};
 use crate::error::{AeroLogError, Result};
 use crate::hlc::{HlcGenerator, HlcTimestamp};
 use crate::index::keydir::KeyDir;
 use crate::index::pointer::RecordPointer;
 use crate::index::sparse_stream::SparseStreamIndex;
 use crate::log::reader::LogReader;
+use crate::log::segment::SegmentFile;
 use crate::log::writer::LogWriter;
 use crate::record::{Record, RecordType};
 use crate::recovery::RecoveryManager;
 use crate::stream::{AeroLogStream, StreamEntry};
 use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -46,6 +48,8 @@ struct InnerDb {
     reader: LogReader,
     is_closed: AtomicBool,
     compaction_lock: Mutex<()>,
+    stream_retentions: parking_lot::RwLock<HashMap<String, RetentionPolicy>>,
+    background_worker_stop: Arc<AtomicBool>,
 }
 
 impl AeroLogDb {
@@ -56,8 +60,6 @@ impl AeroLogDb {
 
         let keydir = KeyDir::new();
         let sparse_index = SparseStreamIndex::new(config.sparse_checkpoint_interval);
-
-        // Scan existing segments and recover state
         let report = RecoveryManager::recover(&base_dir, &keydir, &sparse_index)?;
 
         let hlc_gen = HlcGenerator::new(config.node_id_hash);
@@ -73,6 +75,10 @@ impl AeroLogDb {
         )?;
         let reader = LogReader::new(&base_dir);
 
+        let stream_retentions = parking_lot::RwLock::new(config.stream_retention_overrides.clone());
+        let background_worker_stop = Arc::new(AtomicBool::new(false));
+        let auto_compact_interval = config.compaction_interval;
+
         let inner = Arc::new(InnerDb {
             base_dir,
             config,
@@ -83,9 +89,16 @@ impl AeroLogDb {
             reader,
             is_closed: AtomicBool::new(false),
             compaction_lock: Mutex::new(()),
+            stream_retentions,
+            background_worker_stop,
         });
 
-        Ok(Self { inner })
+        let db = Self { inner };
+        if let Some(interval) = auto_compact_interval {
+            db.start_background_compactor(interval)?;
+        }
+
+        Ok(db)
     }
 
     /// Stores a Key-Value pair, generating a new monotonic HLC timestamp.
@@ -142,6 +155,13 @@ impl AeroLogDb {
             None => return Ok(None),
         };
 
+        {
+            let mut writer = self.inner.writer.lock();
+            if ptr.file_id == writer.active_file_id() {
+                writer.flush()?;
+            }
+        }
+
         let value = self
             .inner
             .reader
@@ -156,6 +176,13 @@ impl AeroLogDb {
             Some(p) => p,
             None => return Ok(None),
         };
+
+        {
+            let mut writer = self.inner.writer.lock();
+            if ptr.file_id == writer.active_file_id() {
+                writer.flush()?;
+            }
+        }
 
         let record = self
             .inner
@@ -210,6 +237,20 @@ impl AeroLogDb {
         }))
     }
 
+    /// Retrieves an append-only stream handle, registering or updating its declarative retention policy.
+    pub fn get_stream_with_retention(
+        &self,
+        stream_id: &str,
+        retention: RetentionPolicy,
+    ) -> Result<Arc<dyn AeroLogStream>> {
+        self.check_open()?;
+        self.inner
+            .stream_retentions
+            .write()
+            .insert(stream_id.to_string(), retention);
+        self.get_stream(stream_id)
+    }
+
     /// Scans and returns all live key-value pairs within a collection.
     pub fn scan_collection(&self, collection: &str) -> Result<Vec<(String, Vec<u8>)>> {
         self.check_open()?;
@@ -232,15 +273,22 @@ impl AeroLogDb {
         limit: usize,
     ) -> Result<Vec<Record>> {
         self.check_open()?;
-        let mut candidates = Vec::with_capacity(limit.min(1024));
+        self.inner.writer.lock().flush()?;
 
+        let mut candidates = Vec::with_capacity(limit.min(1024));
         let active_file_id = self.inner.writer.lock().active_file_id();
 
-        // Scan each segment sequentially using streaming reader with early exit
         for file_id in 1..=active_file_id {
-            let mut reached_limit = false;
-            let _ = self
+            let seg_path = self
                 .inner
+                .base_dir
+                .join(SegmentFile::filename_for_id(file_id));
+            if !seg_path.exists() {
+                continue;
+            }
+
+            let mut reached_limit = false;
+            self.inner
                 .reader
                 .scan_segment_streaming(file_id, |_, record| {
                     let include = match since_hlc {
@@ -256,7 +304,7 @@ impl AeroLogDb {
                         }
                     }
                     Ok(true)
-                });
+                })?;
 
             if reached_limit {
                 break;
@@ -271,37 +319,61 @@ impl AeroLogDb {
         self.check_open()?;
         let _guard = self.inner.compaction_lock.lock();
 
-        // Flush active writer and roll to a new segment so current writes are not disturbed
         let active_id = {
             let mut writer = self.inner.writer.lock();
             writer.roll_segment()?
         };
 
-        let stats = LogCompactor::compact(
+        self.inner.reader.clear_cache();
+
+        let retentions = self.inner.stream_retentions.read();
+        let stats = LogCompactor::compact_with_retentions(
             &self.inner.base_dir,
             active_id,
             &self.inner.keydir,
             &self.inner.config,
+            Some(&retentions),
         )?;
+        drop(retentions);
 
-        // Rebuild sparse_index so stream checkpoints point to newly compacted offsets and files
-        self.rebuild_sparse_index()?;
+        self.inner.reader.clear_cache();
+        self.rebuild_sparse_index(&stats.stream_evictions)?;
 
         Ok(stats)
     }
 
-    fn rebuild_sparse_index(&self) -> Result<()> {
+    fn rebuild_sparse_index(&self, stream_evictions: &HashMap<String, u64>) -> Result<()> {
         let active_file_id = self.inner.writer.lock().active_file_id();
-        self.inner.sparse_index.clear();
+
+        let mut stream_states: HashMap<String, (u64, u64)> = HashMap::new();
+        for stream_id in self.inner.sparse_index.stream_ids() {
+            let base = self.inner.sparse_index.base_sequence(&stream_id);
+            let total = self.inner.sparse_index.total_entries(&stream_id);
+            let evicted = stream_evictions.get(&stream_id).copied().unwrap_or(0);
+            let new_base = base + evicted;
+            stream_states.insert(stream_id.clone(), (new_base, total));
+            self.inner
+                .sparse_index
+                .reset_stream_checkpoints(&stream_id, new_base, total);
+        }
+
+        let mut current_seqs: HashMap<String, u64> = HashMap::new();
 
         for file_id in 1..=active_file_id {
-            let _ = self
+            let seg_path = self
                 .inner
+                .base_dir
+                .join(SegmentFile::filename_for_id(file_id));
+            if !seg_path.exists() {
+                continue;
+            }
+
+            self.inner
                 .reader
                 .scan_segment_streaming(file_id, |offset, record| {
                     if record.header.record_type == RecordType::StreamEntry {
                         let total_len = record.header.total_record_size() as u32;
-                        let stream_id = String::from_utf8_lossy(&record.key);
+                        let stream_id = String::from_utf8_lossy(&record.key).to_string();
                         let ptr = RecordPointer::new(
                             file_id,
                             offset,
@@ -309,14 +381,72 @@ impl AeroLogDb {
                             record.header.hlc,
                             false,
                         );
-                        self.inner
-                            .sparse_index
-                            .record_entry(&stream_id, record.header.hlc, ptr);
+
+                        let (base_seq, _) =
+                            stream_states.entry(stream_id.clone()).or_insert_with(|| {
+                                let b = self.inner.sparse_index.base_sequence(&stream_id);
+                                (b, b)
+                            });
+                        let current_seq =
+                            current_seqs.entry(stream_id.clone()).or_insert(*base_seq);
+                        let is_first = *current_seq == *base_seq;
+                        self.inner.sparse_index.record_entry_with_seq(
+                            &stream_id,
+                            *current_seq,
+                            record.header.hlc,
+                            ptr,
+                            is_first,
+                        );
+                        *current_seq += 1;
                     }
                     Ok(true)
-                });
+                })?;
         }
         Ok(())
+    }
+
+    /// Starts an optional background compaction worker running at the given interval.
+    pub fn start_background_compactor(&self, interval: std::time::Duration) -> Result<()> {
+        self.check_open()?;
+        self.inner
+            .background_worker_stop
+            .store(false, Ordering::SeqCst);
+        let db_clone = self.clone();
+        let stop_flag = self.inner.background_worker_stop.clone();
+
+        std::thread::Builder::new()
+            .name("aerolog-compactor".to_string())
+            .spawn(move || {
+                let tick = std::time::Duration::from_millis(100);
+                let total_ticks = (interval.as_millis() / 100).max(1) as u64;
+                let mut current_tick = 0u64;
+
+                while !stop_flag.load(Ordering::Relaxed)
+                    && !db_clone.inner.is_closed.load(Ordering::Relaxed)
+                {
+                    std::thread::sleep(tick);
+                    current_tick += 1;
+                    if current_tick >= total_ticks {
+                        current_tick = 0;
+                        if stop_flag.load(Ordering::Relaxed)
+                            || db_clone.inner.is_closed.load(Ordering::Relaxed)
+                        {
+                            break;
+                        }
+                        let _ = db_clone.compact();
+                    }
+                }
+            })
+            .map_err(AeroLogError::Io)?;
+
+        Ok(())
+    }
+
+    /// Signals the background compaction worker to terminate gracefully.
+    pub fn stop_background_compactor(&self) {
+        self.inner
+            .background_worker_stop
+            .store(true, Ordering::SeqCst);
     }
 
     /// Flushes all pending in-memory buffer writes to disk.
@@ -333,6 +463,7 @@ impl AeroLogDb {
 
     /// Closes the database instance.
     pub fn close(&self) -> Result<()> {
+        self.stop_background_compactor();
         if !self.inner.is_closed.swap(true, Ordering::SeqCst) {
             let mut writer = self.inner.writer.lock();
             writer.sync_all()?;
@@ -346,6 +477,12 @@ impl AeroLogDb {
         } else {
             Ok(())
         }
+    }
+}
+
+impl Drop for AeroLogDb {
+    fn drop(&mut self) {
+        self.stop_background_compactor();
     }
 }
 
@@ -381,6 +518,9 @@ impl AeroLogStream for StreamHandle {
 
     fn read_recent(&self, limit: usize) -> Result<Vec<StreamEntry>> {
         self.db.check_open()?;
+        // Ensure pending buffered stream appends in active segment are pushed to OS
+        self.db.inner.writer.lock().flush()?;
+
         let (total_entries, checkpoint) = match self
             .db
             .inner
@@ -391,27 +531,35 @@ impl AeroLogStream for StreamHandle {
             None => return Ok(Vec::new()),
         };
 
-        let start_seq = total_entries.saturating_sub(limit as u64);
+        let base_seq = self.db.inner.sparse_index.base_sequence(&self.stream_id);
+        let start_seq = total_entries.saturating_sub(limit as u64).max(base_seq);
         let (scan_file_id, scan_offset, checkpoint_seq) = match checkpoint {
             Some(cp) => (cp.file_id, cp.offset, cp.sequence),
-            None => (1, 0, 0),
+            None => (1, 0, base_seq),
         };
 
         let active_file_id = self.db.inner.writer.lock().active_file_id();
         let mut entries = Vec::with_capacity(limit);
         let mut current_seq = checkpoint_seq;
+        let stream_bytes = self.stream_id.as_bytes();
 
         for fid in scan_file_id..=active_file_id {
-            let stream_bytes = self.stream_id.as_bytes();
-            let _ = self
+            let seg_path = self
                 .db
                 .inner
-                .reader
-                .scan_segment_streaming(fid, |offset, record| {
-                    if fid == scan_file_id && offset < scan_offset {
-                        return Ok(true);
-                    }
+                .base_dir
+                .join(SegmentFile::filename_for_id(fid));
+            if !seg_path.exists() {
+                continue;
+            }
 
+            let start_off = if fid == scan_file_id { scan_offset } else { 0 };
+            let mut limit_reached = false;
+
+            self.db
+                .inner
+                .reader
+                .scan_segment_from_offset(fid, start_off, |_offset, record| {
                     if record.header.record_type == RecordType::StreamEntry
                         && record.key == stream_bytes
                     {
@@ -423,12 +571,19 @@ impl AeroLogStream for StreamHandle {
                             });
                         }
                         current_seq += 1;
+                        if entries.len() >= limit {
+                            limit_reached = true;
+                            return Ok(false);
+                        }
                     }
                     Ok(true)
-                });
+                })?;
+
+            if limit_reached {
+                break;
+            }
         }
 
-        // Return up to limit entries
         if entries.len() > limit {
             entries = entries.split_off(entries.len() - limit);
         }

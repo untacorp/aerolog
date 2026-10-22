@@ -125,41 +125,19 @@ fn main() {
             value,
         }) => {
             let db = open_db(&cli.db);
-            match db.put(&collection, &key, value.into_bytes()) {
-                Ok(hlc) => println!("OK [HLC: {hlc}]"),
-                Err(err) => eprintln!("Error: {err}"),
-            }
+            execute_put(&db, &collection, &key, value.as_bytes());
         }
         Some(Commands::Get { collection, key }) => {
             let db = open_db(&cli.db);
-            match db.get(&collection, &key) {
-                Ok(Some(val)) => print_payload(&val),
-                Ok(None) => {
-                    eprintln!("Key not found: {collection}:{key}");
-                    std::process::exit(1);
-                }
-                Err(err) => eprintln!("Error: {err}"),
-            }
+            execute_get(&db, &collection, &key, true);
         }
         Some(Commands::Delete { collection, key }) => {
             let db = open_db(&cli.db);
-            match db.delete(&collection, &key) {
-                Ok(hlc) => println!("DELETED [HLC: {hlc}]"),
-                Err(err) => eprintln!("Error: {err}"),
-            }
+            execute_delete(&db, &collection, &key);
         }
         Some(Commands::Scan { collection }) => {
             let db = open_db(&cli.db);
-            match db.scan_collection(&collection) {
-                Ok(pairs) => {
-                    println!("Collection: {collection} ({} items)", pairs.len());
-                    for (k, v) in pairs {
-                        let text = String::from_utf8_lossy(&v);
-                        println!("  {k} => {text}");
-                    }
-                }
-                Err(err) => eprintln!("Error: {err}"),
-            }
+            execute_scan(&db, &collection);
         }
         Some(Commands::Stream { command }) => {
             let db = open_db(&cli.db);
@@ -167,25 +145,7 @@ fn main() {
         }
         Some(Commands::Compact) => {
             let db = open_db(&cli.db);
-            println!("Starting background compaction on {:?}...", cli.db);
-            match db.compact() {
-                Ok(stats) => {
-                    let before_mb = stats.bytes_before as f64 / (1024.0 * 1024.0);
-                    let after_mb = stats.bytes_after as f64 / (1024.0 * 1024.0);
-                    let saved_pct = if stats.bytes_before > 0 {
-                        (stats.bytes_before - stats.bytes_after) as f64 / stats.bytes_before as f64
-                            * 100.0
-                    } else {
-                        0.0
-                    };
-                    println!("Compaction finished successfully:");
-                    println!("  Disk size before: {:.2} MB", before_mb);
-                    println!("  Disk size after : {:.2} MB", after_mb);
-                    println!("  Records evicted : {}", stats.records_evicted);
-                    println!("  Space reclaimed : {:.1}%", saved_pct);
-                }
-                Err(err) => eprintln!("Compaction failed: {err}"),
-            }
+            execute_compact(&db);
         }
         Some(Commands::Inspect) => {
             inspect_database(&cli.db);
@@ -210,35 +170,101 @@ fn open_db(path: &Path) -> AeroLogDb {
     })
 }
 
-fn handle_stream_command(db: &AeroLogDb, command: StreamSubcommands) {
-    match command {
-        StreamSubcommands::Append { stream_id, payload } => match db.get_stream(&stream_id) {
-            Ok(stream) => match stream.append(payload.into_bytes()) {
-                Ok((seq, hlc)) => println!("APPENDED [Seq: {seq}, HLC: {hlc}]"),
-                Err(err) => eprintln!("Error appending to stream: {err}"),
-            },
-            Err(err) => eprintln!("Error getting stream: {err}"),
-        },
-        StreamSubcommands::Read { stream_id, limit } => match db.get_stream(&stream_id) {
-            Ok(stream) => match stream.read_recent(limit) {
-                Ok(entries) => {
-                    println!("Stream: {stream_id} ({} recent entries)", entries.len());
-                    for e in entries {
-                        let text = String::from_utf8_lossy(&e.payload);
-                        println!("  [#{:06} | HLC: {}] {}", e.sequence, e.hlc, text);
-                    }
-                }
-                Err(err) => eprintln!("Error reading stream: {err}"),
-            },
-            Err(err) => eprintln!("Error: {err}"),
-        },
-        StreamSubcommands::Info { stream_id } => match db.get_stream(&stream_id) {
-            Ok(stream) => {
-                println!("Stream: {stream_id}");
-                println!("  Total entries: {}", stream.total_entries());
+fn execute_put(db: &AeroLogDb, collection: &str, key: &str, value: &[u8]) {
+    match db.put(collection, key, value.to_vec()) {
+        Ok(hlc) => println!("OK [HLC: {hlc}]"),
+        Err(err) => eprintln!("Error: {err}"),
+    }
+}
+
+fn execute_get(db: &AeroLogDb, collection: &str, key: &str, exit_on_not_found: bool) {
+    match db.get(collection, key) {
+        Ok(Some(val)) => print_payload(&val),
+        Ok(None) => {
+            if exit_on_not_found {
+                eprintln!("Key not found: {collection}:{key}");
+                std::process::exit(1);
+            } else {
+                println!("(nil)");
             }
-            Err(err) => eprintln!("Error: {err}"),
+        }
+        Err(err) => eprintln!("Error: {err}"),
+    }
+}
+
+fn execute_delete(db: &AeroLogDb, collection: &str, key: &str) {
+    match db.delete(collection, key) {
+        Ok(hlc) => println!("DELETED [HLC: {hlc}]"),
+        Err(err) => eprintln!("Error: {err}"),
+    }
+}
+
+fn execute_scan(db: &AeroLogDb, collection: &str) {
+    match db.scan_collection(collection) {
+        Ok(pairs) => {
+            println!("Collection: {collection} ({} items)", pairs.len());
+            for (k, v) in pairs {
+                let text = String::from_utf8_lossy(&v);
+                println!("  {k} => {text}");
+            }
+        }
+        Err(err) => eprintln!("Error: {err}"),
+    }
+}
+
+fn execute_compact(db: &AeroLogDb) {
+    println!("Running log compaction...");
+    match db.compact() {
+        Ok(stats) => {
+            let before_mb = stats.bytes_before as f64 / (1024.0 * 1024.0);
+            let after_mb = stats.bytes_after as f64 / (1024.0 * 1024.0);
+            let saved_pct = if stats.bytes_before > 0 {
+                (stats.bytes_before - stats.bytes_after) as f64 / stats.bytes_before as f64 * 100.0
+            } else {
+                0.0
+            };
+            println!("Compaction finished successfully:");
+            println!("  Disk size before: {:.2} MB", before_mb);
+            println!("  Disk size after : {:.2} MB", after_mb);
+            println!("  Records evicted : {}", stats.records_evicted);
+            println!("  Space reclaimed : {:.1}%", saved_pct);
+        }
+        Err(err) => eprintln!("Compaction failed: {err}"),
+    }
+}
+
+fn handle_stream_command(db: &AeroLogDb, command: StreamSubcommands) {
+    let stream_id = match &command {
+        StreamSubcommands::Append { stream_id, .. }
+        | StreamSubcommands::Read { stream_id, .. }
+        | StreamSubcommands::Info { stream_id } => stream_id,
+    };
+    let stream = match db.get_stream(stream_id) {
+        Ok(s) => s,
+        Err(err) => {
+            eprintln!("Error getting stream: {err}");
+            return;
+        }
+    };
+
+    match command {
+        StreamSubcommands::Append { payload, .. } => match stream.append(payload.into_bytes()) {
+            Ok((seq, hlc)) => println!("APPENDED [Seq: {seq}, HLC: {hlc}]"),
+            Err(err) => eprintln!("Error appending to stream: {err}"),
         },
+        StreamSubcommands::Read { limit, .. } => match stream.read_recent(limit) {
+            Ok(entries) => {
+                println!("Stream: {stream_id} ({} recent entries)", entries.len());
+                for e in entries {
+                    let text = String::from_utf8_lossy(&e.payload);
+                    println!("  [#{:06} | HLC: {}] {}", e.sequence, e.hlc, text);
+                }
+            }
+            Err(err) => eprintln!("Error reading stream: {err}"),
+        },
+        StreamSubcommands::Info { .. } => {
+            println!("Stream '{stream_id}': {} entries", stream.total_entries());
+        }
     }
 }
 
@@ -246,7 +272,6 @@ fn print_payload(val: &[u8]) {
     match std::str::from_utf8(val) {
         Ok(text) => println!("{text}"),
         Err(_) => {
-            // Hex fallback for non-UTF8 binary data
             let hex: String = val.iter().map(|b| format!("{b:02X}")).collect();
             println!("<binary {} bytes: {}>", val.len(), hex);
         }
@@ -385,7 +410,6 @@ fn run_repl(db_path: &Path) {
                 }
                 let collection = parts[1];
                 let key = parts[2];
-                // Join the rest as the payload value
                 let val_index = trimmed
                     .char_indices()
                     .filter(|&(_, c)| !c.is_whitespace())
@@ -395,52 +419,28 @@ fn run_repl(db_path: &Path) {
                 } else {
                     parts[3]
                 };
-
-                match db.put(collection, key, value.as_bytes().to_vec()) {
-                    Ok(hlc) => println!("OK [HLC: {hlc}]"),
-                    Err(e) => eprintln!("Error: {e}"),
-                }
+                execute_put(&db, collection, key, value.as_bytes());
             }
             "GET" => {
                 if parts.len() != 3 {
                     println!("Usage: GET <collection> <key>");
                     continue;
                 }
-                let collection = parts[1];
-                let key = parts[2];
-                match db.get(collection, key) {
-                    Ok(Some(val)) => print_payload(&val),
-                    Ok(None) => println!("(nil)"),
-                    Err(e) => eprintln!("Error: {e}"),
-                }
+                execute_get(&db, parts[1], parts[2], false);
             }
             "DELETE" => {
                 if parts.len() != 3 {
                     println!("Usage: DELETE <collection> <key>");
                     continue;
                 }
-                let collection = parts[1];
-                let key = parts[2];
-                match db.delete(collection, key) {
-                    Ok(hlc) => println!("DELETED [HLC: {hlc}]"),
-                    Err(e) => eprintln!("Error: {e}"),
-                }
+                execute_delete(&db, parts[1], parts[2]);
             }
             "SCAN" => {
                 if parts.len() != 2 {
                     println!("Usage: SCAN <collection>");
                     continue;
                 }
-                let collection = parts[1];
-                match db.scan_collection(collection) {
-                    Ok(pairs) => {
-                        println!("Collection '{}': {} records", collection, pairs.len());
-                        for (k, v) in pairs {
-                            println!("  {} => {}", k, String::from_utf8_lossy(&v));
-                        }
-                    }
-                    Err(e) => eprintln!("Error: {e}"),
-                }
+                execute_scan(&db, parts[1]);
             }
             "STREAM" => {
                 if parts.len() < 3 {
@@ -448,7 +448,7 @@ fn run_repl(db_path: &Path) {
                     continue;
                 }
                 let action = parts[1].to_uppercase();
-                let stream_id = parts[2];
+                let stream_id = parts[2].to_string();
 
                 match action.as_str() {
                     "APPEND" => {
@@ -456,44 +456,22 @@ fn run_repl(db_path: &Path) {
                             println!("Usage: STREAM APPEND <stream_id> <payload>");
                             continue;
                         }
-                        let payload_text = parts[3..].join(" ");
-                        match db.get_stream(stream_id) {
-                            Ok(stream) => match stream.append(payload_text.into_bytes()) {
-                                Ok((seq, hlc)) => println!("APPENDED [Seq: {seq}, HLC: {hlc}]"),
-                                Err(e) => eprintln!("Error: {e}"),
-                            },
-                            Err(e) => eprintln!("Error: {e}"),
-                        }
+                        let payload = parts[3..].join(" ");
+                        handle_stream_command(
+                            &db,
+                            StreamSubcommands::Append { stream_id, payload },
+                        );
                     }
                     "READ" => {
                         let limit = parts
                             .get(3)
                             .and_then(|s| s.parse::<usize>().ok())
                             .unwrap_or(10);
-                        match db.get_stream(stream_id) {
-                            Ok(stream) => match stream.read_recent(limit) {
-                                Ok(entries) => {
-                                    println!("Stream '{}' ({} entries):", stream_id, entries.len());
-                                    for e in entries {
-                                        println!(
-                                            "  [#{:06} | HLC: {}] {}",
-                                            e.sequence,
-                                            e.hlc,
-                                            String::from_utf8_lossy(&e.payload)
-                                        );
-                                    }
-                                }
-                                Err(e) => eprintln!("Error: {e}"),
-                            },
-                            Err(e) => eprintln!("Error: {e}"),
-                        }
+                        handle_stream_command(&db, StreamSubcommands::Read { stream_id, limit });
                     }
-                    "INFO" => match db.get_stream(stream_id) {
-                        Ok(stream) => {
-                            println!("Stream '{}': {} entries", stream_id, stream.total_entries());
-                        }
-                        Err(e) => eprintln!("Error: {e}"),
-                    },
+                    "INFO" => {
+                        handle_stream_command(&db, StreamSubcommands::Info { stream_id });
+                    }
                     other => println!(
                         "Unknown stream action '{}'. Use APPEND, READ, or INFO",
                         other
@@ -501,18 +479,7 @@ fn run_repl(db_path: &Path) {
                 }
             }
             "COMPACT" => {
-                println!("Running log compaction...");
-                match db.compact() {
-                    Ok(stats) => {
-                        let before_mb = stats.bytes_before as f64 / (1024.0 * 1024.0);
-                        let after_mb = stats.bytes_after as f64 / (1024.0 * 1024.0);
-                        println!(
-                            "Compacted: {:.2} MB -> {:.2} MB ({} evicted)",
-                            before_mb, after_mb, stats.records_evicted
-                        );
-                    }
-                    Err(e) => eprintln!("Compaction failed: {e}"),
-                }
+                execute_compact(&db);
             }
             "INSPECT" => {
                 inspect_database(db_path);

@@ -59,7 +59,9 @@ fn encode_into(value: &CborValue, buf: &mut Vec<u8>) {
             if *i >= 0 {
                 write_type_and_num(0, *i as u64, buf);
             } else {
-                let neg = (-1 - *i) as u64;
+                // RFC 8949 major type 1 represents negative integers -1 - n.
+                // In two's complement, -1 - x == !x, which prevents arithmetic overflow on i64::MIN.
+                let neg = (!*i) as u64;
                 write_type_and_num(1, neg, buf);
             }
         }

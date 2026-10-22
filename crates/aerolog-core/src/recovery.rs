@@ -46,6 +46,12 @@ impl RecoveryManager {
         let mut segment_ids = Vec::new();
 
         if base_dir.exists() {
+            // Clean up any incomplete compaction staging files from a previous crash
+            let staging_dir = base_dir.join(".compaction_staging");
+            if staging_dir.exists() {
+                let _ = std::fs::remove_dir_all(&staging_dir);
+            }
+
             for entry in std::fs::read_dir(base_dir)? {
                 let entry = entry?;
                 let path = entry.path();
@@ -70,17 +76,12 @@ impl RecoveryManager {
                 }
 
                 match record.header.record_type {
-                    RecordType::Put => {
+                    RecordType::Put | RecordType::Delete => {
+                        let is_tombstone = record.header.record_type == RecordType::Delete;
                         let key_str = String::from_utf8_lossy(&record.key);
-                        let (collection, key) = Self::split_composite_key(&key_str);
-                        let ptr = RecordPointer::new(file_id, offset, total_len, hlc, false);
-                        keydir.put(&collection, &key, ptr);
-                    }
-                    RecordType::Delete => {
-                        let key_str = String::from_utf8_lossy(&record.key);
-                        let (collection, key) = Self::split_composite_key(&key_str);
-                        let ptr = RecordPointer::new(file_id, offset, total_len, hlc, true);
-                        keydir.put(&collection, &key, ptr);
+                        let (col, key) = Self::split_composite_key(&key_str);
+                        let ptr = RecordPointer::new(file_id, offset, total_len, hlc, is_tombstone);
+                        keydir.put(&col, &key, ptr);
                     }
                     RecordType::StreamEntry => {
                         let stream_id = String::from_utf8_lossy(&record.key);

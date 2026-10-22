@@ -62,7 +62,6 @@ impl LogWriter {
     pub fn append(&mut self, record: &Record) -> Result<(u32, u64, u32)> {
         let record_len = record.header.total_record_size() as u32;
 
-        // Check if we need to roll the segment before writing
         if self.current_offset > 0
             && (self.current_offset + record_len as u64) > self.max_segment_size
         {
@@ -74,9 +73,9 @@ impl LogWriter {
         self.file_writer.write_all(&header_bytes)?;
         self.file_writer.write_all(&record.key)?;
         self.file_writer.write_all(&record.value)?;
-        self.file_writer.flush()?;
 
         if self.sync_mode == SyncMode::SyncOnWrite {
+            self.file_writer.flush()?;
             self.file_writer.get_ref().sync_data()?;
         }
 
@@ -138,8 +137,6 @@ mod tests {
     #[test]
     fn test_log_writer_append_and_roll() {
         let dir = tempdir().unwrap();
-        // Record size is 36 bytes (32 header + 2 key + 2 val).
-        // Set segment size to 50 bytes so the second append triggers a roll.
         let mut writer = LogWriter::open(dir.path(), 1, 50, SyncMode::SyncOnWrite).unwrap();
 
         let hlc = HlcTimestamp::new(1000, 0, 1);
@@ -149,7 +146,6 @@ mod tests {
         assert_eq!(file_id_1, 1);
         assert_eq!(offset_1, 0);
 
-        // Next write should cause a roll because 36 + 36 > 50
         let (file_id_2, offset_2, _len_2) = writer.append(&record).unwrap();
         assert_eq!(file_id_2, 2);
         assert_eq!(offset_2, 0);

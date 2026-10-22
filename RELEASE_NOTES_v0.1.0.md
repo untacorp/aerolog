@@ -29,9 +29,9 @@ AeroLog v0.1.0 is the inaugural production release of AeroLog: an embedded, loca
 - Universal type-safe C-ABI bridge generated via Mozilla UniFFI v0.32.
 - Ready-to-use foreign language bindings for **Kotlin** (Android & JVM) and **Swift** (iOS & macOS).
 
-### 6. AeroLog CLI Diagnostic Suite (`aerolog-cli`)
-- Command-line utility for database operations: `bench`, `inspect`, `dump`, `compact`.
-- Demonstrated native throughput: **>200,000 sequential writes/sec** and **>300,000 stream appends/sec**.
+### 6. AeroLog CLI & Interactive Shell (`aerolog-cli`)
+- Full-featured database utility with interactive REPL, point queries (`put`, `get`, `delete`), stream inspection, data dump, and offline compaction.
+- Criterion benchmark suites (`cargo bench`) and Yahoo! Cloud Serving Benchmark (YCSB) harnesses: **>200,000 sequential writes/sec** and **>300,000 stream appends/sec**.
 
 ---
 
@@ -70,8 +70,8 @@ let db = AeroLogDb::open("/path/to/db_dir", config)?;
 db.put("users", "user_1001", b"{\"name\": \"Alice\"}".to_vec())?;
 
 // Single-seek get
-if let Some(record) = db.get("users", "user_1001")? {
-    println!("Retrieved: {}", String::from_utf8_lossy(&record.payload));
+if let Some(val) = db.get("users", "user_1001")? {
+    println!("Retrieved: {}", String::from_utf8_lossy(&val));
 }
 ```
 

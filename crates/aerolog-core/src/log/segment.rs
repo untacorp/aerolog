@@ -58,18 +58,17 @@ impl SegmentFile {
     /// Opens or creates a segment file on disk.
     pub fn open(directory: &Path, file_id: u32, is_active: bool) -> Result<Self> {
         let path = directory.join(Self::filename_for_id(file_id));
-        let size = if path.exists() {
-            let metadata = std::fs::metadata(&path)?;
-            metadata.len()
-        } else {
-            // Create file if it does not exist
-            let _ = OpenOptions::new()
-                .create(true)
-                .truncate(false)
-                .write(true)
-                .read(true)
-                .open(&path)?;
-            0
+        let size = match std::fs::metadata(&path) {
+            Ok(meta) => meta.len(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .read(true)
+                    .open(&path)?;
+                0
+            }
+            Err(e) => return Err(AeroLogError::Io(e)),
         };
 
         Ok(Self {

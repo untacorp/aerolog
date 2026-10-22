@@ -13,13 +13,6 @@
 // limitations under the License.
 
 //! Standard YCSB (Yahoo! Cloud Serving Benchmark) workload evaluation for AeroLog.
-//!
-//! Evaluates the core database engine against standard transactional workloads:
-//! - Workload A (50% Read, 50% Update): Session store / Update heavy
-//! - Workload B (95% Read, 5% Update): Photo tagging / Read mostly
-//! - Workload C (100% Read): User profile cache / Read only
-//! - Workload D (Read Latest): Status updates / Append stream
-//! - Workload F (Read-Modify-Write): User database with balance updates
 
 use aerolog_core::{AeroLogConfig, AeroLogDb, SyncMode};
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
@@ -50,7 +43,6 @@ fn bench_ycsb_workload_a(c: &mut Criterion) {
     let update_payload = vec![0x99; 128];
     let mut op_counter = 0u64;
 
-    // Workload A: 50% Read, 50% Update
     group.bench_function("workload_a_50_read_50_update", |b| {
         b.iter(|| {
             op_counter += 1;
@@ -82,7 +74,6 @@ fn bench_ycsb_workload_b(c: &mut Criterion) {
     let update_payload = vec![0x88; 128];
     let mut op_counter = 0u64;
 
-    // Workload B: 95% Read, 5% Update
     group.bench_function("workload_b_95_read_5_update", |b| {
         b.iter(|| {
             op_counter += 1;
@@ -113,7 +104,6 @@ fn bench_ycsb_workload_c(c: &mut Criterion) {
     let (_dir, db) = setup_benchmark_db(10_000);
     let mut op_counter = 0u64;
 
-    // Workload C: 100% Read
     group.bench_function("workload_c_100_read", |b| {
         b.iter(|| {
             op_counter += 1;
@@ -134,7 +124,6 @@ fn bench_ycsb_workload_f(c: &mut Criterion) {
     let (_dir, db) = setup_benchmark_db(10_000);
     let mut op_counter = 0u64;
 
-    // Workload F: Read-Modify-Write
     group.bench_function("workload_f_read_modify_write", |b| {
         b.iter(|| {
             op_counter += 1;

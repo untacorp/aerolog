@@ -77,6 +77,9 @@ impl fmt::Display for HlcTimestamp {
     }
 }
 
+/// Maximum allowable physical clock drift forward from remote peers (60 seconds).
+pub const MAX_CLOCK_DRIFT_MS: u64 = 60_000;
+
 /// Thread-safe generator for monotonically increasing [`HlcTimestamp`] values.
 #[derive(Debug)]
 pub struct HlcGenerator {
@@ -109,9 +112,11 @@ impl HlcGenerator {
         if wall > state.physical_time {
             state.physical_time = wall;
             state.logical_counter = 0;
+        } else if state.logical_counter == u16::MAX {
+            state.physical_time = state.physical_time.saturating_add(1);
+            state.logical_counter = 0;
         } else {
-            // Clock skew backwards or sub-millisecond collision: ratchet counter forward
-            state.logical_counter = state.logical_counter.saturating_add(1);
+            state.logical_counter += 1;
         }
 
         HlcTimestamp::new(
@@ -123,27 +128,37 @@ impl HlcGenerator {
 
     /// Updates the local clock with an observed remote timestamp.
     ///
-    /// Ratchets the local clock forward to ensure strict causality with peer events.
+    /// Ratchets the local clock forward to ensure strict causality with peer events,
+    /// bounded by [`MAX_CLOCK_DRIFT_MS`] to prevent remote clock poisoning.
     pub fn update(&self, remote: HlcTimestamp) -> HlcTimestamp {
         let mut state = self.state.lock();
         let wall = Self::current_physical_time();
+        let remote_pt = remote
+            .physical_time
+            .min(wall.saturating_add(MAX_CLOCK_DRIFT_MS));
 
-        let max_pt = wall.max(state.physical_time).max(remote.physical_time);
+        let max_pt = wall.max(state.physical_time).max(remote_pt);
 
-        if max_pt == state.physical_time && max_pt == remote.physical_time {
-            state.logical_counter = state
+        let mut next_lc = if max_pt == state.physical_time && max_pt == remote_pt {
+            state
                 .logical_counter
                 .max(remote.logical_counter)
-                .saturating_add(1);
+                .saturating_add(1)
         } else if max_pt == state.physical_time {
-            state.logical_counter = state.logical_counter.saturating_add(1);
-        } else if max_pt == remote.physical_time {
-            state.logical_counter = remote.logical_counter.saturating_add(1);
+            state.logical_counter.saturating_add(1)
+        } else if max_pt == remote_pt {
+            remote.logical_counter.saturating_add(1)
         } else {
-            state.logical_counter = 0;
-        }
+            0
+        };
 
-        state.physical_time = max_pt;
+        state.physical_time = if next_lc == u16::MAX {
+            next_lc = 0;
+            max_pt.saturating_add(1)
+        } else {
+            max_pt
+        };
+        state.logical_counter = next_lc;
 
         HlcTimestamp::new(
             state.physical_time,
@@ -191,5 +206,36 @@ mod tests {
 
         assert!(updated.physical_time >= remote.physical_time);
         assert!(updated > remote);
+    }
+
+    #[test]
+    fn test_hlc_clock_drift_bounded() {
+        let gen = HlcGenerator::new(0x01);
+        let wall = HlcGenerator::current_physical_time();
+        let poisoned_remote = HlcTimestamp::new(wall + 10 * 365 * 86400 * 1000, 10, 0x02);
+        let updated = gen.update(poisoned_remote);
+
+        let max_allowed = wall + MAX_CLOCK_DRIFT_MS + 1000;
+        assert!(
+            updated.physical_time <= max_allowed,
+            "Physical time {} exceeds maximum allowed drift {}",
+            updated.physical_time,
+            max_allowed
+        );
+    }
+
+    #[test]
+    fn test_hlc_counter_overflow_monotonicity() {
+        let gen = HlcGenerator::new(0x01);
+        let future_time = HlcGenerator::current_physical_time() + 10_000;
+        {
+            let mut state = gen.state.lock();
+            state.physical_time = future_time;
+            state.logical_counter = u16::MAX;
+        }
+
+        let next = gen.now();
+        assert_eq!(next.physical_time, future_time + 1);
+        assert_eq!(next.logical_counter, 0);
     }
 }

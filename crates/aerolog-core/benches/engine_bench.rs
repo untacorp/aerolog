@@ -80,7 +80,6 @@ fn bench_random_point_reads(c: &mut Criterion) {
 fn bench_stream_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("engine_stream_ops");
 
-    // Benchmark Stream Append Throughput
     group.throughput(Throughput::Elements(1));
     group.bench_function("stream_append", |b| {
         let dir = tempdir().unwrap();
@@ -96,7 +95,6 @@ fn bench_stream_operations(c: &mut Criterion) {
         });
     });
 
-    // Benchmark Stream Recent Retrieval (Sparse Index Seek)
     group.bench_function("stream_read_recent_100", |b| {
         let dir = tempdir().unwrap();
         let config = AeroLogConfig::new(0x12345678)

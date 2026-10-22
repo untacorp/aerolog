@@ -150,8 +150,6 @@ impl RecordHeader {
         value: &[u8],
     ) -> u32 {
         let mut hasher = Hasher::new();
-
-        // 28 bytes of header after CRC32 field
         let mut header_tail = [0u8; 28];
         BigEndian::write_u16(&mut header_tail[0..2], MAGIC_BYTES);
         header_tail[2] = CURRENT_VERSION;
@@ -284,7 +282,6 @@ mod tests {
         let mut record =
             Record::new(RecordType::Put, hlc, b"key".to_vec(), b"original".to_vec()).unwrap();
 
-        // Tamper with value bytes
         record.value[0] ^= 0xFF;
         assert!(record.verify_checksum().is_err());
     }

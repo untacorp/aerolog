@@ -22,7 +22,6 @@ use std::collections::HashMap;
 /// deterministic Last-Write-Wins (LWW) conflict resolution using Hybrid Logical Clocks.
 #[derive(Debug, Default)]
 pub struct KeyDir {
-    // collection -> (key -> pointer)
     entries: RwLock<HashMap<String, HashMap<String, RecordPointer>>>,
 }
 
@@ -62,16 +61,53 @@ impl KeyDir {
     /// Rejected stale writes perform zero heap allocations.
     pub fn put(&self, collection: &str, key: &str, new_ptr: RecordPointer) -> bool {
         let mut lock = self.entries.write();
-        let col_map = lock.entry(collection.to_string()).or_default();
-
-        if let Some(existing) = col_map.get(key) {
-            if existing.hlc > new_ptr.hlc {
-                // Stale write rejected by Last-Write-Wins rule
+        if let Some(col_map) = lock.get_mut(collection) {
+            if col_map.get(key).is_some_and(|e| e.hlc > new_ptr.hlc) {
                 return false;
             }
+            col_map.insert(key.to_string(), new_ptr);
+            return true;
         }
 
+        let mut col_map = HashMap::new();
         col_map.insert(key.to_string(), new_ptr);
+        lock.insert(collection.to_string(), col_map);
+        true
+    }
+
+    /// Removes an entry from KeyDir unconditionally.
+    pub fn remove(&self, collection: &str, key: &str) -> Option<RecordPointer> {
+        let mut lock = self.entries.write();
+        let col_map = lock.get_mut(collection)?;
+        let removed = col_map.remove(key);
+        if col_map.is_empty() {
+            lock.remove(collection);
+        }
+        removed
+    }
+
+    /// Removes a tombstone entry from KeyDir if its HLC is at or before `max_hlc`.
+    /// Returns `true` if the tombstone was successfully purged.
+    pub fn remove_tombstone(
+        &self,
+        collection: &str,
+        key: &str,
+        max_hlc: crate::hlc::HlcTimestamp,
+    ) -> bool {
+        let mut lock = self.entries.write();
+        let Some(col_map) = lock.get_mut(collection) else {
+            return false;
+        };
+        let Some(ptr) = col_map.get(key) else {
+            return false;
+        };
+        if !ptr.is_tombstone || ptr.hlc > max_hlc {
+            return false;
+        }
+        col_map.remove(key);
+        if col_map.is_empty() {
+            lock.remove(collection);
+        }
         true
     }
 
@@ -137,11 +173,9 @@ mod tests {
         assert!(keydir.put("users", "alice", ptr1));
         assert_eq!(keydir.get("users", "alice").unwrap().offset, 0);
 
-        // Newer timestamp overwrites
         assert!(keydir.put("users", "alice", ptr2));
         assert_eq!(keydir.get("users", "alice").unwrap().offset, 100);
 
-        // Stale timestamp is rejected
         assert!(!keydir.put("users", "alice", ptr1));
         assert_eq!(keydir.get("users", "alice").unwrap().offset, 100);
     }
@@ -156,13 +190,10 @@ mod tests {
         keydir.put("items", "item-1", ptr);
         assert!(keydir.get("items", "item-1").is_some());
 
-        // Write tombstone
         let tombstone = RecordPointer::new(1, 50, 40, t2, true);
         keydir.put("items", "item-1", tombstone);
 
-        // get() returns None for deleted item
         assert!(keydir.get("items", "item-1").is_none());
-        // get_raw() still returns the pointer
         assert!(keydir.get_raw("items", "item-1").unwrap().is_tombstone);
     }
 }

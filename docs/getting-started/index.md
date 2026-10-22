@@ -11,4 +11,4 @@ Welcome to the AeroLog getting started guide. AeroLog can be embedded directly i
 3. [Embedded Rust Guide](rust-guide.md): Advanced configurations, concurrent operations, and custom retention policies in Rust.
 4. [Android & JVM Guide](kotlin-android.md): Kotlin coroutines integration, lifecycle management, and native `.so` bundling.
 5. [Apple Platforms Guide](swift-apple.md): iOS and macOS Swift integration using Swift Package Manager and ARC.
-6. [CLI Diagnostics Tool](cli-tool.md): Running benchmarks, inspecting binary segments, dumping records, and performing offline compaction.
+6. [CLI Diagnostics Tool](cli-tool.md): Interactive REPL, inspection of binary segments, dumping records, and offline compaction.

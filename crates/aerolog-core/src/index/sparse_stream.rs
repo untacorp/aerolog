@@ -20,6 +20,8 @@ use std::collections::{BTreeMap, HashMap};
 /// In-memory metadata and sparse checkpoints for an individual append-only stream.
 #[derive(Debug, Clone, Default)]
 pub struct StreamMetadata {
+    /// Earliest surviving sequence number for this stream.
+    pub base_sequence: u64,
     /// Total number of messages/events appended to this stream.
     pub total_entries: u64,
     /// Latest observed HLC timestamp in this stream.
@@ -65,7 +67,6 @@ impl SparseStreamIndex {
         meta.latest_hlc = Some(hlc);
         meta.latest_pointer = Some(pointer);
 
-        // Record a checkpoint if this entry falls on the checkpoint interval boundary
         if seq.is_multiple_of(self.checkpoint_interval as u64) {
             let cp = StreamCheckpoint {
                 sequence: seq,
@@ -77,6 +78,61 @@ impl SparseStreamIndex {
         }
 
         seq
+    }
+
+    /// Records a stream entry at an explicit sequence number (used during post-compaction rebuild).
+    pub fn record_entry_with_seq(
+        &self,
+        stream_id: &str,
+        seq: u64,
+        hlc: HlcTimestamp,
+        pointer: RecordPointer,
+        force_checkpoint: bool,
+    ) {
+        let mut lock = self.streams.write();
+        let interval = self.checkpoint_interval as u64;
+        let meta = lock.entry(stream_id.to_string()).or_default();
+
+        if seq >= meta.total_entries {
+            meta.total_entries = seq + 1;
+        }
+        meta.latest_hlc = Some(hlc);
+        meta.latest_pointer = Some(pointer);
+
+        if force_checkpoint || seq.is_multiple_of(interval) {
+            let cp = StreamCheckpoint {
+                sequence: seq,
+                hlc,
+                file_id: pointer.file_id,
+                offset: pointer.offset,
+            };
+            meta.checkpoints.insert(seq, cp);
+        }
+    }
+
+    /// Resets checkpoint tree for a stream while preserving base sequence and total entry bounds.
+    pub fn reset_stream_checkpoints(
+        &self,
+        stream_id: &str,
+        base_sequence: u64,
+        total_entries: u64,
+    ) {
+        let mut lock = self.streams.write();
+        let meta = lock.entry(stream_id.to_string()).or_default();
+        meta.base_sequence = base_sequence;
+        meta.total_entries = total_entries.max(base_sequence);
+        meta.checkpoints.clear();
+        meta.latest_pointer = None;
+        meta.latest_hlc = None;
+    }
+
+    /// Retrieves the base sequence (earliest surviving entry) for a stream.
+    pub fn base_sequence(&self, stream_id: &str) -> u64 {
+        self.streams
+            .read()
+            .get(stream_id)
+            .map(|m| m.base_sequence)
+            .unwrap_or(0)
     }
 
     /// Retrieves stream metadata if the stream exists.
@@ -105,7 +161,10 @@ impl SparseStreamIndex {
         if meta.total_entries == 0 {
             return None;
         }
-        let start_seq = meta.total_entries.saturating_sub(limit as u64);
+        let start_seq = meta
+            .total_entries
+            .saturating_sub(limit as u64)
+            .max(meta.base_sequence);
         let checkpoint = meta
             .checkpoints
             .range(..=start_seq)
@@ -141,7 +200,6 @@ mod tests {
 
     #[test]
     fn test_sparse_checkpoint_interval() {
-        // Interval: 10
         let index = SparseStreamIndex::new(10);
         let hlc = HlcTimestamp::new(1000, 0, 1);
 
@@ -152,13 +210,11 @@ mod tests {
 
         let meta = index.get_metadata("chat-room-1").unwrap();
         assert_eq!(meta.total_entries, 25);
-        // Checkpoints at seq 0, 10, 20
         assert_eq!(meta.checkpoints.len(), 3);
         assert!(meta.checkpoints.contains_key(&0));
         assert!(meta.checkpoints.contains_key(&10));
         assert!(meta.checkpoints.contains_key(&20));
 
-        // Find nearest checkpoint before 15 -> should return 10
         let cp = index.find_checkpoint_before("chat-room-1", 15).unwrap();
         assert_eq!(cp.sequence, 10);
     }

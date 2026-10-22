@@ -161,7 +161,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Benchmarks & Performance
 
-AeroLog includes an industry-standard [Criterion.rs](https://bheisler.github.io/criterion.rs/book/) benchmarking suite and standard YCSB (Yahoo! Cloud Serving Benchmark) workloads:
+AeroLog includes [Criterion.rs](https://bheisler.github.io/criterion.rs/book/) benchmarks and YCSB workloads:
 
 ```bash
 # Run all Criterion benchmarks

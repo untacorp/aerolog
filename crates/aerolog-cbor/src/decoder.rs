@@ -28,16 +28,20 @@ pub enum CborDecodeError {
     /// Unrecognized simple value or major type code.
     #[error("Unknown or unsupported CBOR type tag: 0x{0:02X}")]
     UnknownTag(u8),
+    /// Maximum nesting recursion depth exceeded.
+    #[error("Exceeded maximum recursion depth of {0}")]
+    RecursionDepthExceeded(usize),
 }
+
+/// Maximum recursion depth allowed during CBOR decoding to prevent stack exhaustion.
+pub const MAX_DECODE_DEPTH: usize = 64;
+
+/// Maximum initial capacity for pre-allocated vectors to prevent memory exhaustion DoS.
+pub const MAX_INITIAL_CAPACITY: usize = 1024;
 
 /// Decodes raw binary CBOR bytes into a [`CborValue`].
 pub fn decode(bytes: &[u8]) -> Result<CborValue, CborDecodeError> {
-    let mut offset = 0;
-    let (val, len) = decode_one(bytes, offset)?;
-    offset += len;
-    if offset != bytes.len() {
-        // Warning: trailing bytes present, but primary value parsed successfully
-    }
+    let (val, _) = decode_one(bytes, 0, 0)?;
     Ok(val)
 }
 
@@ -80,7 +84,15 @@ fn read_type_and_num(bytes: &[u8], offset: usize) -> Result<(u8, u64, usize), Cb
     }
 }
 
-fn decode_one(bytes: &[u8], offset: usize) -> Result<(CborValue, usize), CborDecodeError> {
+fn decode_one(
+    bytes: &[u8],
+    offset: usize,
+    depth: usize,
+) -> Result<(CborValue, usize), CborDecodeError> {
+    if depth > MAX_DECODE_DEPTH {
+        return Err(CborDecodeError::RecursionDepthExceeded(depth));
+    }
+
     let (major, num, header_len) = read_type_and_num(bytes, offset)?;
     let mut total_len = header_len;
     let data_start = offset + header_len;
@@ -88,23 +100,25 @@ fn decode_one(bytes: &[u8], offset: usize) -> Result<(CborValue, usize), CborDec
     match major {
         0 => Ok((CborValue::Integer(num as i64), total_len)),
         1 => {
-            let val = -1 - (num as i64);
+            // RFC 8949 major type 1 is -1 - num.
+            // In two's complement, -1 - n == !n, avoiding signed overflow on boundary values.
+            let val = (!num) as i64;
             Ok((CborValue::Integer(val), total_len))
         }
         2 => {
-            let end = data_start + num as usize;
-            if end > bytes.len() {
-                return Err(CborDecodeError::UnexpectedEof(bytes.len()));
-            }
+            let end = match data_start.checked_add(num as usize) {
+                Some(e) if e <= bytes.len() => e,
+                _ => return Err(CborDecodeError::UnexpectedEof(bytes.len())),
+            };
             let slice = bytes[data_start..end].to_vec();
             total_len += num as usize;
             Ok((CborValue::Bytes(slice), total_len))
         }
         3 => {
-            let end = data_start + num as usize;
-            if end > bytes.len() {
-                return Err(CborDecodeError::UnexpectedEof(bytes.len()));
-            }
+            let end = match data_start.checked_add(num as usize) {
+                Some(e) if e <= bytes.len() => e,
+                _ => return Err(CborDecodeError::UnexpectedEof(bytes.len())),
+            };
             let s = std::str::from_utf8(&bytes[data_start..end])
                 .map_err(|_| CborDecodeError::InvalidUtf8(data_start))?
                 .to_string();
@@ -112,10 +126,11 @@ fn decode_one(bytes: &[u8], offset: usize) -> Result<(CborValue, usize), CborDec
             Ok((CborValue::Text(s), total_len))
         }
         4 => {
-            let mut items = Vec::with_capacity(num as usize);
+            let cap = (num as usize).min(MAX_INITIAL_CAPACITY);
+            let mut items = Vec::with_capacity(cap);
             let mut item_offset = data_start;
             for _ in 0..num {
-                let (item, len) = decode_one(bytes, item_offset)?;
+                let (item, len) = decode_one(bytes, item_offset, depth + 1)?;
                 items.push(item);
                 item_offset += len;
                 total_len += len;
@@ -123,14 +138,15 @@ fn decode_one(bytes: &[u8], offset: usize) -> Result<(CborValue, usize), CborDec
             Ok((CborValue::Array(items), total_len))
         }
         5 => {
-            let mut pairs = Vec::with_capacity(num as usize);
+            let cap = (num as usize).min(MAX_INITIAL_CAPACITY);
+            let mut pairs = Vec::with_capacity(cap);
             let mut item_offset = data_start;
             for _ in 0..num {
-                let (k, k_len) = decode_one(bytes, item_offset)?;
+                let (k, k_len) = decode_one(bytes, item_offset, depth + 1)?;
                 item_offset += k_len;
                 total_len += k_len;
 
-                let (v, v_len) = decode_one(bytes, item_offset)?;
+                let (v, v_len) = decode_one(bytes, item_offset, depth + 1)?;
                 item_offset += v_len;
                 total_len += v_len;
 

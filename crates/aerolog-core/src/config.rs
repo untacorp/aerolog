@@ -74,6 +74,10 @@ pub struct AeroLogConfig {
 
     /// Stream-specific retention policy overrides.
     pub stream_retention_overrides: HashMap<String, RetentionPolicy>,
+
+    /// Optional periodic background compaction interval.
+    /// Default: None (compaction is manual via `db.compact()` unless explicitly scheduled).
+    pub compaction_interval: Option<std::time::Duration>,
 }
 
 impl Default for AeroLogConfig {
@@ -86,6 +90,7 @@ impl Default for AeroLogConfig {
             node_id_hash: 0,
             default_stream_retention: RetentionPolicy::KeepAll,
             stream_retention_overrides: HashMap::new(),
+            compaction_interval: None,
         }
     }
 }
@@ -137,6 +142,13 @@ impl AeroLogConfig {
     ) -> Self {
         self.stream_retention_overrides
             .insert(stream_id.into(), policy);
+        self
+    }
+
+    /// Sets an optional periodic background compaction interval.
+    /// Pass `None` to disable automatic background compaction.
+    pub fn with_compaction_interval(mut self, interval: Option<std::time::Duration>) -> Self {
+        self.compaction_interval = interval;
         self
     }
 

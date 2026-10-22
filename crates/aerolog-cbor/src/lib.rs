@@ -85,4 +85,44 @@ mod tests {
             Some("alice")
         );
     }
+
+    #[test]
+    fn test_cbor_i64_extremes() {
+        let values = vec![
+            CborValue::Integer(i64::MIN),
+            CborValue::Integer(i64::MIN + 1),
+            CborValue::Integer(-1),
+            CborValue::Integer(0),
+            CborValue::Integer(1),
+            CborValue::Integer(i64::MAX - 1),
+            CborValue::Integer(i64::MAX),
+        ];
+
+        for val in values {
+            let encoded = encode(&val);
+            let decoded = decode(&encoded).unwrap();
+            assert_eq!(val, decoded);
+        }
+    }
+
+    #[test]
+    fn test_cbor_recursion_depth_limit() {
+        let mut deeply_nested = CborValue::Integer(42);
+        for _ in 0..70 {
+            deeply_nested = CborValue::Array(vec![deeply_nested]);
+        }
+        let encoded = encode(&deeply_nested);
+        let res = decode(&encoded);
+        assert!(matches!(
+            res,
+            Err(CborDecodeError::RecursionDepthExceeded(_))
+        ));
+    }
+
+    #[test]
+    fn test_cbor_unbounded_length_does_not_oom() {
+        let malicious = vec![0x9A, 0x00, 0xFF, 0xFF, 0xFF];
+        let res = decode(&malicious);
+        assert!(matches!(res, Err(CborDecodeError::UnexpectedEof(_))));
+    }
 }

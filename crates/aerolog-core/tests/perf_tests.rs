@@ -31,7 +31,6 @@ fn test_native_rust_performance_benchmarks() {
         payload.len()
     );
 
-    // 1. Sequential Write Throughput (db.put)
     let config = AeroLogConfig::new(0xA1B2C3D4E5F6)
         .with_sync_mode(SyncMode::Periodic)
         .with_max_segment_size(32 * 1024 * 1024);
@@ -52,11 +51,9 @@ fn test_native_rust_performance_benchmarks() {
     println!("   Throughput   : {:.0} writes/sec", write_ops);
     println!("   Avg Latency  : {:.2} us/op", write_latency_us);
 
-    // 2. Random Point Reads (db.get)
     let sample_reads = 50_000;
     let read_start = Instant::now();
     for i in 0..sample_reads {
-        // Pseudo-random stride through keys
         let idx = (i * 37) % count;
         let key = format!("node_{:06}", idx);
         let val = db.get("telemetry", &key).unwrap();
@@ -71,7 +68,6 @@ fn test_native_rust_performance_benchmarks() {
     println!("   Throughput   : {:.0} reads/sec", read_ops);
     println!("   Avg Latency  : {:.2} us/op", read_latency_us);
 
-    // 3. Stream Append & Recent Window Retrieval
     let stream_count = 20_000;
     let stream = db.get_stream("mesh_chat_events").unwrap();
     let stream_payload = b"MESH_PACKET_ROUTING_HOP_ACK_PAYLOAD_VERIFIED".to_vec();
@@ -89,7 +85,6 @@ fn test_native_rust_performance_benchmarks() {
     println!("   Throughput   : {:.0} msgs/sec", stream_ops);
     println!("   Avg Latency  : {:.2} us/append", stream_latency_us);
 
-    // Stream window query
     let window_start = Instant::now();
     let recent_500 = stream.read_recent(500).unwrap();
     let window_elapsed = window_start.elapsed();
@@ -101,7 +96,6 @@ fn test_native_rust_performance_benchmarks() {
         recent_500.len()
     );
 
-    // 4. Cold Startup Recovery Speed
     db.close().unwrap();
     drop(stream);
     drop(db);
@@ -121,8 +115,6 @@ fn test_native_rust_performance_benchmarks() {
     println!("   Recovery Duration : {:.2?}", recovery_elapsed);
     println!("   Re-index Speed    : {:.0} records/sec", recovery_ops);
 
-    // 5. Compaction Throughput
-    // Delete 50% of telemetry keys to create dead space
     for i in (0..count).step_by(2) {
         let key = format!("node_{:06}", i);
         db2.delete("telemetry", &key).unwrap();

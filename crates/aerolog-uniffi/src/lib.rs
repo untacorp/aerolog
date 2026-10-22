@@ -143,6 +143,31 @@ impl FfiAeroLogDb {
         Ok(Arc::new(Self { inner: db }))
     }
 
+    /// Opens an AeroLog database with customized segment size and sync disciplines.
+    #[uniffi::constructor]
+    pub fn open_advanced(
+        path: String,
+        node_id_hash: u64,
+        max_segment_size: Option<u64>,
+        sync_mode: Option<String>,
+    ) -> Result<Arc<Self>, AeroLogFfiError> {
+        let mut config = AeroLogConfig::new(node_id_hash);
+        if let Some(size) = max_segment_size {
+            config = config.with_max_segment_size(size);
+        }
+        if let Some(mode) = sync_mode {
+            let sm = match mode.to_lowercase().as_str() {
+                "synconwrite" => SyncMode::SyncOnWrite,
+                "osdefault" => SyncMode::OsDefault,
+                _ => SyncMode::Periodic,
+            };
+            config = config.with_sync_mode(sm);
+        }
+
+        let db = AeroLogDb::open(path, config)?;
+        Ok(Arc::new(Self { inner: db }))
+    }
+
     /// Stores a Key-Value pair, generating a new monotonic HLC timestamp.
     pub fn put(
         &self,
@@ -185,6 +210,32 @@ impl FfiAeroLogDb {
     /// Retrieves an append-only stream partition handle.
     pub fn get_stream(&self, stream_id: String) -> Result<Arc<FfiStream>, AeroLogFfiError> {
         let stream = self.inner.get_stream(&stream_id)?;
+        Ok(Arc::new(FfiStream { inner: stream }))
+    }
+
+    /// Retrieves an append-only stream partition handle configured with MaxEntries retention.
+    pub fn get_stream_with_max_entries(
+        &self,
+        stream_id: String,
+        max_entries: u64,
+    ) -> Result<Arc<FfiStream>, AeroLogFfiError> {
+        let stream = self.inner.get_stream_with_retention(
+            &stream_id,
+            aerolog_core::RetentionPolicy::MaxEntries(max_entries),
+        )?;
+        Ok(Arc::new(FfiStream { inner: stream }))
+    }
+
+    /// Retrieves an append-only stream partition handle configured with TimeToLive retention.
+    pub fn get_stream_with_ttl(
+        &self,
+        stream_id: String,
+        ttl_millis: u64,
+    ) -> Result<Arc<FfiStream>, AeroLogFfiError> {
+        let stream = self.inner.get_stream_with_retention(
+            &stream_id,
+            aerolog_core::RetentionPolicy::TimeToLive(ttl_millis),
+        )?;
         Ok(Arc::new(FfiStream { inner: stream }))
     }
 

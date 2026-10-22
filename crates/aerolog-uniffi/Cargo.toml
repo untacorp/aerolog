@@ -19,6 +19,9 @@ aerolog-core = { path = "../aerolog-core", version = "0.1.0" }
 uniffi = { version = "0.32", features = ["cli"] }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [[bin]]
 name = "uniffi-bindgen"
 path = "src/bin/uniffi-bindgen.rs"
