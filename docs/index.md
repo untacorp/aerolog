@@ -142,17 +142,26 @@ flowchart TD
     }
     ```
 
-=== "CLI Diagnostics"
+=== "CLI & Interactive REPL"
 
     ```bash
-    # Run the comprehensive benchmark suite
-    aerolog bench --records 50000 --val-size 128
+    # Launch interactive database shell (REPL)
+    aerolog --db ./storage_data repl
 
-    # Inspect the exact binary records inside a segment file
-    aerolog inspect ./storage_data/data-000000.aerolog
+    # Insert or update a point record
+    aerolog --db ./storage_data put users usr_101 '{"name":"Alice","role":"lead"}'
 
-    # Perform offline compaction on a sealed database
-    aerolog compact ./storage_data
+    # Point read a record
+    aerolog --db ./storage_data get users usr_101
+
+    # Scan all live records in a collection
+    aerolog --db ./storage_data scan users
+
+    # Append an event to a stream partition
+    aerolog --db ./storage_data stream append chat:mesh '{"msg":"P2P link established"}'
+
+    # Run online background compaction and reclaim disk space
+    aerolog --db ./storage_data compact
     ```
 
 ---
