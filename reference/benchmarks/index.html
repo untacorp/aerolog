@@ -1239,10 +1239,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#test-environment" class="md-nav__link">
+  <a href="#test-environment-hardware-specification" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Test Environment
+        Test Environment &amp; Hardware Specification
       
     </span>
   </a>
@@ -1250,10 +1250,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#throughput-summary" class="md-nav__link">
+  <a href="#native-rust-engine-throughput-latency" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Throughput Summary
+        Native Rust Engine Throughput &amp; Latency
       
     </span>
   </a>
@@ -1261,10 +1261,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#memory-boundedness-analysis" class="md-nav__link">
+  <a href="#standard-ycsb-yahoo-cloud-serving-benchmark-workloads" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Memory Boundedness Analysis
+        Standard YCSB (Yahoo! Cloud Serving Benchmark) Workloads
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memory-boundedness-ram-footprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory Boundedness &amp; RAM Footprint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reproducing-the-benchmarks-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reproducing the Benchmarks Locally
       
     </span>
   </a>
@@ -1710,10 +1732,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#test-environment" class="md-nav__link">
+  <a href="#test-environment-hardware-specification" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Test Environment
+        Test Environment &amp; Hardware Specification
       
     </span>
   </a>
@@ -1721,10 +1743,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#throughput-summary" class="md-nav__link">
+  <a href="#native-rust-engine-throughput-latency" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Throughput Summary
+        Native Rust Engine Throughput &amp; Latency
       
     </span>
   </a>
@@ -1732,10 +1754,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#memory-boundedness-analysis" class="md-nav__link">
+  <a href="#standard-ycsb-yahoo-cloud-serving-benchmark-workloads" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Memory Boundedness Analysis
+        Standard YCSB (Yahoo! Cloud Serving Benchmark) Workloads
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memory-boundedness-ram-footprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory Boundedness &amp; RAM Footprint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reproducing-the-benchmarks-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reproducing the Benchmarks Locally
       
     </span>
   </a>
@@ -1763,62 +1807,142 @@
 
 
 <h1 id="benchmarks-hardware-metrics">Benchmarks &amp; Hardware Metrics</h1>
-<p>Performance measurements for AeroLog across sequential writes, random point reads, streaming ingestion, and memory usage.</p>
+<p>Performance measurements for AeroLog across sequential writes, random point reads, concurrent ingestion, standard YCSB workloads, and crash recovery.</p>
 <hr />
-<h2 id="test-environment">Test Environment</h2>
+<h2 id="test-environment-hardware-specification">Test Environment &amp; Hardware Specification</h2>
 <ul>
-<li><strong>Hardware</strong>: AMD Ryzen / Intel Core x86-64 &amp; Apple Silicon ARM64</li>
-<li><strong>Storage Medium</strong>: NVMe PCIe 4.0 SSD &amp; Mobile UFS 3.1 Flash</li>
+<li><strong>CPU</strong>: AMD Ryzen / Intel Core x86-64 (8 physical / 16 logical threads) &amp; Apple Silicon ARM64</li>
+<li><strong>Storage</strong>: NVMe PCIe 4.0 SSD &amp; Mobile UFS 3.1 Flash</li>
 <li><strong>Operating Systems</strong>: Ubuntu Linux 24.04 LTS &amp; macOS Sonoma 14</li>
-<li><strong>Rust Toolchain</strong>: 1.85.0 Stable (<code>--release</code> profile with LTO)</li>
+<li><strong>Rust Toolchain</strong>: 1.85.0 Stable (<code>--release</code> profile with optimizations)</li>
+<li><strong>Benchmarking Framework</strong>: Criterion.rs 0.5 (Statistical evaluation with 95% confidence intervals)</li>
 </ul>
 <hr />
-<h2 id="throughput-summary">Throughput Summary</h2>
+<h2 id="native-rust-engine-throughput-latency">Native Rust Engine Throughput &amp; Latency</h2>
+<p>Measured via native release performance suite (<code>cargo test --release --test perf_tests -- --nocapture</code>):</p>
 <table>
 <thead>
 <tr>
 <th style="text-align: left;">Benchmark Stage</th>
 <th style="text-align: left;">Workload Type</th>
-<th style="text-align: left;">Throughput (ops/sec)</th>
+<th style="text-align: left;">Throughput (<em>ops/sec</em>)</th>
 <th style="text-align: left;">Average Latency</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>Point Key-Value Writes</strong></td>
-<td style="text-align: left;">Sequential <span class="arithmatex">\(O(1)\)</span> Appends</td>
-<td style="text-align: left;"><strong>206,526 writes/sec</strong></td>
-<td style="text-align: left;"><span class="arithmatex">\(4.84\ \mu\text{s}\)</span> per write</td>
+<td style="text-align: left;"><strong>Sequential Point Writes</strong> (<code>db.put</code>)</td>
+<td style="text-align: left;">Append-only sequential log write</td>
+<td style="text-align: left;"><strong>264,677 writes/sec</strong></td>
+<td style="text-align: left;"><strong>3.78 <span class="arithmatex">\(\mu\text{s}\)</span></strong> per write</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>Point Key-Value Reads</strong></td>
-<td style="text-align: left;">Single Disk Seek via KeyDir</td>
-<td style="text-align: left;"><strong>63,179 reads/sec</strong></td>
-<td style="text-align: left;"><span class="arithmatex">\(15.82\ \mu\text{s}\)</span> per read</td>
+<td style="text-align: left;"><strong>Concurrent Ingestion</strong> (4 Threads)</td>
+<td style="text-align: left;">Multi-threaded write contention</td>
+<td style="text-align: left;"><strong>219,854 writes/sec</strong></td>
+<td style="text-align: left;"><strong>4.54 <span class="arithmatex">\(\mu\text{s}\)</span></strong> per write</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Random Point Reads</strong> (<code>db.get</code>)</td>
+<td style="text-align: left;">In-memory <code>KeyDir</code> seek + NVMe read</td>
+<td style="text-align: left;"><strong>73,749 reads/sec</strong></td>
+<td style="text-align: left;"><strong>13.56 <span class="arithmatex">\(\mu\text{s}\)</span></strong> per read</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Stream Event Appends</strong></td>
-<td style="text-align: left;">Bounded Sequential Log</td>
-<td style="text-align: left;"><strong>369,549 appends/sec</strong></td>
-<td style="text-align: left;"><span class="arithmatex">\(2.70\ \mu\text{s}\)</span> per append</td>
+<td style="text-align: left;">Append-only bounded event stream</td>
+<td style="text-align: left;"><strong>520,820 msgs/sec</strong></td>
+<td style="text-align: left;"><strong>1.92 <span class="arithmatex">\(\mu\text{s}\)</span></strong> per append</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>Stream Sparse Scan</strong></td>
-<td style="text-align: left;">Sequential Offset Scan</td>
-<td style="text-align: left;"><strong>32,360 reads/sec</strong></td>
-<td style="text-align: left;"><span class="arithmatex">\(30.90\ \mu\text{s}\)</span> per read</td>
+<td style="text-align: left;"><strong>Stream Window Query</strong> (<code>read_recent</code>)</td>
+<td style="text-align: left;">Retrieve 500 latest entries via sparse index</td>
+<td style="text-align: left;"><strong>25,112 entries/sec</strong></td>
+<td style="text-align: left;"><strong>39.80 <span class="arithmatex">\(\mu\text{s}\)</span></strong> per entry</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Cold Crash Recovery</strong></td>
+<td style="text-align: left;">Full segment replay and index rebuild</td>
+<td style="text-align: left;"><strong>1,187,695 records/sec</strong></td>
+<td style="text-align: left;"><strong>0.84 <span class="arithmatex">\(\mu\text{s}\)</span></strong> per record</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Compaction Space Reclaim</strong></td>
+<td style="text-align: left;">Merge sealed files and evict dead records</td>
+<td style="text-align: left;"><strong>25,000 dead records evicted</strong></td>
+<td style="text-align: left;"><strong>296.8 ms</strong> total duration</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2 id="memory-boundedness-analysis">Memory Boundedness Analysis</h2>
-<p>Resident Set Size (RSS) memory footprint measured during continuous stream ingestion:</p>
+<h2 id="standard-ycsb-yahoo-cloud-serving-benchmark-workloads">Standard YCSB (Yahoo! Cloud Serving Benchmark) Workloads</h2>
+<p>Evaluated with Criterion.rs statistical harness across 10,000 pre-populated keys with 128-byte payloads:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Workload</th>
+<th style="text-align: left;">Specification</th>
+<th style="text-align: left;">Access Pattern</th>
+<th style="text-align: left;">Mean Latency</th>
+<th style="text-align: left;">Throughput</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Workload A</strong></td>
+<td style="text-align: left;">50% Read, 50% Update</td>
+<td style="text-align: left;">Session Store / Update Heavy</td>
+<td style="text-align: left;"><strong>7.78 <span class="arithmatex">\(\mu\text{s}\)</span></strong></td>
+<td style="text-align: left;"><strong>128,520 ops/sec</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Workload B</strong></td>
+<td style="text-align: left;">95% Read, 5% Update</td>
+<td style="text-align: left;">Photo Tagging / Read Mostly</td>
+<td style="text-align: left;"><strong>11.65 <span class="arithmatex">\(\mu\text{s}\)</span></strong></td>
+<td style="text-align: left;"><strong>85,803 ops/sec</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Workload C</strong></td>
+<td style="text-align: left;">100% Read</td>
+<td style="text-align: left;">User Profile Cache / Read Only</td>
+<td style="text-align: left;"><strong>12.64 <span class="arithmatex">\(\mu\text{s}\)</span></strong></td>
+<td style="text-align: left;"><strong>79,055 ops/sec</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Workload F</strong></td>
+<td style="text-align: left;">Read-Modify-Write</td>
+<td style="text-align: left;">Balance Mutation &amp; Record CAS</td>
+<td style="text-align: left;"><strong>14.65 <span class="arithmatex">\(\mu\text{s}\)</span></strong></td>
+<td style="text-align: left;"><strong>68,231 ops/sec</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="memory-boundedness-ram-footprint">Memory Boundedness &amp; RAM Footprint</h2>
+<p>Resident Set Size (RSS) memory footprint measured during continuous high-volume stream ingestion:</p>
 <pre class="mermaid"><code>xychart-beta
     title "RAM Usage Across 100,000 Ingested Stream Events"
     x-axis ["10k", "25k", "50k", "75k", "100k"]
     y-axis "Memory (MB)" 0 --&gt; 20
     line [6.2, 7.8, 9.4, 11.1, 12.8]</code></pre>
-<p>Even after ingesting 100,000 stream events with 128-byte payloads, total process RSS remains strictly below <strong>13 MB</strong>, proving that the sparse checkpoint indexing model effectively prevents mobile memory pressure.</p>
+<p>Even after ingesting 100,000 stream events with 128-byte payloads, total process RSS remains strictly below <strong>13 MB</strong>. The dual-tier indexing model (storing only 1 checkpoint every <span class="arithmatex">\(N\)</span> entries in memory) prevents memory leaks or out-of-memory crashes on resource-constrained embedded devices.</p>
+<hr />
+<h2 id="reproducing-the-benchmarks-locally">Reproducing the Benchmarks Locally</h2>
+<p>Anyone can reproduce these measurements on their local machine:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Clone the repository</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/untacorp/aerolog.git
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">cd</span><span class="w"> </span>aerolog
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># Run the complete Criterion benchmark harness</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>cargo<span class="w"> </span>bench<span class="w"> </span>-p<span class="w"> </span>aerolog-core
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># Run specific YCSB workloads</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>cargo<span class="w"> </span>bench<span class="w"> </span>-p<span class="w"> </span>aerolog-core<span class="w"> </span>--bench<span class="w"> </span>ycsb_bench
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="c1"># Run the native integration performance suite</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--release<span class="w"> </span>--test<span class="w"> </span>perf_tests<span class="w"> </span>--<span class="w"> </span>--nocapture
+</span></code></pre></div>
 
 
 

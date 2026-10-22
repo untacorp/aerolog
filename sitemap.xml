@@ -2,138 +2,138 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://untacorp.github.io/aerolog/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/about/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/about/before-you-start/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/about/faq/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/about/features/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/community/changelog/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/community/code-of-conduct/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/community/coding-standards/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/community/contributing/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/community/security/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/community/adr/0001-bitcask-log-architecture/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/community/adr/0002-dual-tier-indexing/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/community/adr/0003-native-hlc-causality/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/community/adr/0004-pluggable-retention-policy/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/getting-started/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/getting-started/cli-tool/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/getting-started/installation/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/getting-started/kotlin-android/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/getting-started/quickstart/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/getting-started/rust-guide/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/getting-started/swift-apple/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/manual/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/manual/bindings/uniffi-bridge/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/manual/causality/hlc-clock/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/manual/formats/cbor-codec/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/manual/integrity/crash-recovery/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/manual/storage/bitcask-log/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/manual/storage/compaction-and-retention/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/manual/storage/dual-tier-indexing/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/reference/benchmarks/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/reference/binary-spec/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/reference/cli-reference/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/reference/rust-api/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://untacorp.github.io/aerolog/reference/uniffi-api/</loc>
-         <lastmod>2026-10-21</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
 </urlset>
