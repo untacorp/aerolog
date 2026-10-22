@@ -1805,9 +1805,11 @@
 * <code>CRC32</code> instruction via SSE 4.2 on x86-64
 * <code>__crc32d</code> instruction via ARMv8-A Cryptography Extensions on aarch64</p>
 <h3 id="2-upfront-length-prefixes">2. Upfront Length Prefixes</h3>
-<p>All variable-length fields (<code>key_len</code>, <code>collection_len</code>, <code>val_len</code>) are stored in the fixed 32-byte header. Before reading payloads into buffers, AeroLog validates that:
-$<span class="arithmatex">\(\text{offset} + 32 + \text{key\_len} + \text{coll\_len} + \text{val\_len} \le \text{file\_size}\)</span>$
-This prevents buffer over-reads and segmentation faults when encountering malformed or partial writes.</p>
+<p>All variable-length fields (<code>key_len</code>, <code>collection_len</code>, <code>val_len</code>) are stored in the fixed 32-byte header. Before reading payloads into buffers, AeroLog validates that:</p>
+<div class="arithmatex">\[
+\text{offset} + 32 + \text{key\_len} + \text{coll\_len} + \text{val\_len} \le \text{file\_size}
+\]</div>
+<p>This prevents buffer over-reads and segmentation faults when encountering malformed or partial writes.</p>
 <hr />
 <h2 id="the-cold-startup-recovery-scanner">The Cold Startup Recovery Scanner</h2>
 <p>When <code>AeroLogDb::open()</code> executes, the recovery scanner walks all <code>.aerolog</code> files sequentially:</p>
@@ -1891,6 +1893,8 @@ This prevents buffer over-reads and segmentation faults when encountering malfor
     
     
       <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../../javascripts/mathjax.js"></script>
       
         <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js"></script>
       

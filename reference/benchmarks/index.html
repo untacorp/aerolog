@@ -1834,37 +1834,37 @@
 <td style="text-align: left;"><strong>Sequential Point Writes</strong> (<code>db.put</code>)</td>
 <td style="text-align: left;">Append-only sequential log write</td>
 <td style="text-align: left;"><strong>264,677 writes/sec</strong></td>
-<td style="text-align: left;"><strong>3.78 <span class="arithmatex">\(\mu\text{s}\)</span></strong> per write</td>
+<td style="text-align: left;"><strong>3.78 µs</strong> per write</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Concurrent Ingestion</strong> (4 Threads)</td>
 <td style="text-align: left;">Multi-threaded write contention</td>
 <td style="text-align: left;"><strong>219,854 writes/sec</strong></td>
-<td style="text-align: left;"><strong>4.54 <span class="arithmatex">\(\mu\text{s}\)</span></strong> per write</td>
+<td style="text-align: left;"><strong>4.54 µs</strong> per write</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Random Point Reads</strong> (<code>db.get</code>)</td>
 <td style="text-align: left;">In-memory <code>KeyDir</code> seek + NVMe read</td>
 <td style="text-align: left;"><strong>73,749 reads/sec</strong></td>
-<td style="text-align: left;"><strong>13.56 <span class="arithmatex">\(\mu\text{s}\)</span></strong> per read</td>
+<td style="text-align: left;"><strong>13.56 µs</strong> per read</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Stream Event Appends</strong></td>
 <td style="text-align: left;">Append-only bounded event stream</td>
 <td style="text-align: left;"><strong>520,820 msgs/sec</strong></td>
-<td style="text-align: left;"><strong>1.92 <span class="arithmatex">\(\mu\text{s}\)</span></strong> per append</td>
+<td style="text-align: left;"><strong>1.92 µs</strong> per append</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Stream Window Query</strong> (<code>read_recent</code>)</td>
 <td style="text-align: left;">Retrieve 500 latest entries via sparse index</td>
 <td style="text-align: left;"><strong>25,112 entries/sec</strong></td>
-<td style="text-align: left;"><strong>39.80 <span class="arithmatex">\(\mu\text{s}\)</span></strong> per entry</td>
+<td style="text-align: left;"><strong>39.80 µs</strong> per entry</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Cold Crash Recovery</strong></td>
 <td style="text-align: left;">Full segment replay and index rebuild</td>
 <td style="text-align: left;"><strong>1,187,695 records/sec</strong></td>
-<td style="text-align: left;"><strong>0.84 <span class="arithmatex">\(\mu\text{s}\)</span></strong> per record</td>
+<td style="text-align: left;"><strong>0.84 µs</strong> per record</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Compaction Space Reclaim</strong></td>
@@ -1892,28 +1892,28 @@
 <td style="text-align: left;"><strong>Workload A</strong></td>
 <td style="text-align: left;">50% Read, 50% Update</td>
 <td style="text-align: left;">Session Store / Update Heavy</td>
-<td style="text-align: left;"><strong>7.78 <span class="arithmatex">\(\mu\text{s}\)</span></strong></td>
+<td style="text-align: left;"><strong>7.78 µs</strong></td>
 <td style="text-align: left;"><strong>128,520 ops/sec</strong></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Workload B</strong></td>
 <td style="text-align: left;">95% Read, 5% Update</td>
 <td style="text-align: left;">Photo Tagging / Read Mostly</td>
-<td style="text-align: left;"><strong>11.65 <span class="arithmatex">\(\mu\text{s}\)</span></strong></td>
+<td style="text-align: left;"><strong>11.65 µs</strong></td>
 <td style="text-align: left;"><strong>85,803 ops/sec</strong></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Workload C</strong></td>
 <td style="text-align: left;">100% Read</td>
 <td style="text-align: left;">User Profile Cache / Read Only</td>
-<td style="text-align: left;"><strong>12.64 <span class="arithmatex">\(\mu\text{s}\)</span></strong></td>
+<td style="text-align: left;"><strong>12.64 µs</strong></td>
 <td style="text-align: left;"><strong>79,055 ops/sec</strong></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Workload F</strong></td>
 <td style="text-align: left;">Read-Modify-Write</td>
 <td style="text-align: left;">Balance Mutation &amp; Record CAS</td>
-<td style="text-align: left;"><strong>14.65 <span class="arithmatex">\(\mu\text{s}\)</span></strong></td>
+<td style="text-align: left;"><strong>14.65 µs</strong></td>
 <td style="text-align: left;"><strong>68,231 ops/sec</strong></td>
 </tr>
 </tbody>
@@ -2008,6 +2008,8 @@
     
     
       <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
       
         <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js"></script>
       

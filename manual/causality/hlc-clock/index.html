@@ -1777,11 +1777,13 @@
 <hr />
 <h2 id="total-causal-ordering">Total Causal Ordering</h2>
 <p>AeroLog achieves a strict total ordering across all mutations using tuple comparison:</p>
-<div class="arithmatex">\[H_1 &lt; H_2 \iff \begin{cases}
-pt_1 &lt; pt_2 \\
-pt_1 = pt_2 \land lc_1 &lt; lc_2 \\
-pt_1 = pt_2 \land lc_1 = lc_2 \land node_1 &lt; node_2
-\end{cases}\]</div>
+<div class="arithmatex">\[
+H_1 \lt H_2 \iff \begin{cases}
+pt_1 \lt pt_2 \\
+pt_1 = pt_2 \land lc_1 \lt lc_2 \\
+pt_1 = pt_2 \land lc_1 = lc_2 \land node_1 \lt node_2
+\end{cases}
+\]</div>
 <p>Where:
 1. <code>physical_time</code> tracks the passage of wall-clock time.
 2. <code>logical_counter</code> increments when multiple mutations occur within the same physical millisecond.
@@ -1798,8 +1800,7 @@ pt_1 = pt_2 \land lc_1 = lc_2 \land node_1 &lt; node_2
     NodeA-&gt;&gt;NodeA: Apply ChangeRecord to Segment &amp; KeyDir</code></pre>
 <ol>
 <li>The local clock generator observes <code>(pt_b, lc_b)</code>.</li>
-<li>The local clock updates its internal state:
-   $<span class="arithmatex">\(\text{next\_pt} = \max(\text{local\_pt}, \text{remote\_pt}, \text{current\_wall\_clock})\)</span>$</li>
+<li>The local clock updates its internal state: <span class="arithmatex">\(\text{next\_pt} = \max(\text{local\_pt}, \text{remote\_pt}, \text{current\_wall\_clock})\)</span>.</li>
 <li>This guarantees that any subsequent write produced locally is strictly greater than all previously observed remote events, ensuring causal consistency across wireless mesh networks.</li>
 </ol>
 
@@ -1867,6 +1868,8 @@ pt_1 = pt_2 \land lc_1 = lc_2 \land node_1 &lt; node_2
     
     
       <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../../javascripts/mathjax.js"></script>
       
         <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js"></script>
       

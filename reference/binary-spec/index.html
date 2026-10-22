@@ -1891,13 +1891,17 @@
 </tr>
 </tbody>
 </table>
-<p>Total record length on disk:
-$<span class="arithmatex">\(\text{Total Bytes} = 32 + \text{key\_len} + \text{value\_len}\)</span>$</p>
+<p>Total record length on disk:</p>
+<div class="arithmatex">\[
+\text{Total Bytes} = 32 + \text{key\_len} + \text{value\_len}
+\]</div>
 <hr />
 <h2 id="4-checksum-calculation-scope">4. Checksum Calculation Scope</h2>
-<p>The <code>crc32</code> field at bytes <code>0x00..0x03</code> protects all subsequent bytes of the record:
-$<span class="arithmatex">\(\text{CRC32}(\text{bytes}[0x04 \dots 0x1F] \,\|\, \text{body\_bytes})\)</span>$
-During read operations, the engine calculates the checksum over this slice and asserts equality with <code>crc32</code>.</p>
+<p>The <code>crc32</code> field at bytes <code>0x00..0x03</code> protects all subsequent bytes of the record:</p>
+<div class="arithmatex">\[
+\text{CRC32}(\text{bytes}[0x04 \dots 0x1F] \,\|\, \text{body\_bytes})
+\]</div>
+<p>During read operations, the engine calculates the checksum over this slice and asserts equality with <code>crc32</code>.</p>
 
 
 
@@ -1963,6 +1967,8 @@ During read operations, the engine calculates the checksum over this slice and a
     
     
       <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
       
         <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js"></script>
       
