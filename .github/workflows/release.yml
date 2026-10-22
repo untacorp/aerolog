@@ -31,7 +31,7 @@ jobs:
             target: aarch64-apple-darwin
             binary_name: aerolog
             archive_suffix: tar.gz
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
             binary_name: aerolog
             archive_suffix: tar.gz
