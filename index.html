@@ -1882,7 +1882,7 @@
 </table>
 <hr />
 <h2 id="quick-look-multi-language-usage">Quick Look: Multi-Language Usage</h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Rust</label><label for="__tabbed_1_2">Kotlin (Android/JVM)</label><label for="__tabbed_1_3">Swift (iOS/macOS)</label><label for="__tabbed_1_4">CLI Diagnostics</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Rust</label><label for="__tabbed_1_2">Kotlin (Android/JVM)</label><label for="__tabbed_1_3">Swift (iOS/macOS)</label><label for="__tabbed_1_4">CLI &amp; Interactive REPL</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="language-rust highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">use</span><span class="w"> </span><span class="n">aerolog_core</span><span class="p">::{</span><span class="n">AeroLogDb</span><span class="p">,</span><span class="w"> </span><span class="n">AeroLogConfig</span><span class="p">};</span>
@@ -1948,14 +1948,23 @@
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Run the comprehensive benchmark suite</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>aerolog<span class="w"> </span>bench<span class="w"> </span>--records<span class="w"> </span><span class="m">50000</span><span class="w"> </span>--val-size<span class="w"> </span><span class="m">128</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Launch interactive database shell (REPL)</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>aerolog<span class="w"> </span>--db<span class="w"> </span>./storage_data<span class="w"> </span>repl
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Inspect the exact binary records inside a segment file</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>aerolog<span class="w"> </span>inspect<span class="w"> </span>./storage_data/data-000000.aerolog
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Insert or update a point record</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>aerolog<span class="w"> </span>--db<span class="w"> </span>./storage_data<span class="w"> </span>put<span class="w"> </span>users<span class="w"> </span>usr_101<span class="w"> </span><span class="s1">'{"name":"Alice","role":"lead"}'</span>
 </span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1"># Perform offline compaction on a sealed database</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>aerolog<span class="w"> </span>compact<span class="w"> </span>./storage_data
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1"># Point read a record</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>aerolog<span class="w"> </span>--db<span class="w"> </span>./storage_data<span class="w"> </span>get<span class="w"> </span>users<span class="w"> </span>usr_101
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="c1"># Scan all live records in a collection</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>aerolog<span class="w"> </span>--db<span class="w"> </span>./storage_data<span class="w"> </span>scan<span class="w"> </span>users
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="c1"># Append an event to a stream partition</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>aerolog<span class="w"> </span>--db<span class="w"> </span>./storage_data<span class="w"> </span>stream<span class="w"> </span>append<span class="w"> </span>chat:mesh<span class="w"> </span><span class="s1">'{"msg":"P2P link established"}'</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="c1"># Run online background compaction and reclaim disk space</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>aerolog<span class="w"> </span>--db<span class="w"> </span>./storage_data<span class="w"> </span>compact
 </span></code></pre></div>
 </div>
 </div>
