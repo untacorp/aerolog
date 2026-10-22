@@ -48,9 +48,9 @@ sequenceDiagram
     participant NodeA as Node A (Local)
     participant NodeB as Node B (Remote)
 
-    NodeB->>NodeA: Send ChangeRecord (HLC: pt_b, lc_b, node_b)
-    Note over NodeA: Update Local HLC Generator:<br/>max(local_pt, remote_pt, wall_clock)<br/>Increment logical counter if equal
-    NodeA->>NodeA: Apply ChangeRecord to Segment & KeyDir
+    NodeB->>NodeA: Send ChangeRecord<br/>(HLC: pt_b, lc_b, node_b)
+    Note over NodeA: Update Local HLC:<br/>max(local_pt, remote_pt, wall_clock)<br/>Increment logical counter if equal
+    NodeA->>NodeA: Apply ChangeRecord to<br/>Segment & KeyDir
 ```
 
 1. The local clock generator observes `(pt_b, lc_b)`.

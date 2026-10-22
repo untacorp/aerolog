@@ -11,23 +11,23 @@ The **Compactor** worker and **Retention Policy** system maintain storage effici
 Compaction runs in the background or can be triggered explicitly via `db.compact()`:
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph SealedFiles ["Sealed Segment Files"]
-        S0["data-000000.aerolog<br/>(Contains old versions & tombstones)"]
-        S1["data-000001.aerolog<br/>(Contains mixed records)"]
+        S0["data-000000.aerolog<br/>(Dead records & tombstones)"]
+        S1["data-000001.aerolog<br/>(Historical mixed records)"]
     end
 
     subgraph CompactorWorker ["Compactor Engine"]
-        CW["Scan Records<br/>Compare with KeyDir & Stream Retention"]
+        CW["Scan Sealed Records<br/>Filter against KeyDir & Retention Rules"]
     end
 
-    subgraph Output ["Compacted Segment"]
-        CS["data-000002.aerolog<br/>(Only latest alive records)"]
+    subgraph Output ["Compacted Segment File"]
+        CS["data-000002.aerolog<br/>(Only active live records)"]
     end
 
     SealedFiles --> CompactorWorker
     CompactorWorker --> Output
-    CompactorWorker -. Delete Old Files .-> SealedFiles
+    CompactorWorker -. Delete Reclaimed Segments .-> SealedFiles
 ```
 
 ### Compaction Execution Steps

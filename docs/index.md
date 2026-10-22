@@ -13,28 +13,32 @@ The diagram below illustrates AeroLog's data pipeline from consumer application 
 ```mermaid
 flowchart TD
     subgraph AppLayer ["Application & P2P Mesh Layer"]
-        A1["Key-Value Store Requests"]
-        A2["Append-Only Stream Events"]
-        A3["P2P Wireless Delta Replication"]
+        A1["Key-Value Requests"]
+        A2["Stream Event Logs"]
+        A3["Delta Replication"]
     end
 
     subgraph FfiLayer ["Foreign Function Interface (UniFFI)"]
         F1["Kotlin (Android / JVM)"]
         F2["Swift (iOS / macOS)"]
-        F3["CLI Diagnostic Binary"]
+        F3["CLI Diagnostics & REPL"]
     end
 
     subgraph CoreEngine ["AeroLog Core Engine (Rust)"]
-        E1["AeroLogDb Multi-Model Facade"]
+        E1["AeroLogDb Facade"]
         E2["Monotonic HLC Generator"]
         E3["LogWriter (Sequential I/O)"]
-        E4["LogReader (Single Disk Seek)"]
+        E4["LogReader (Single-Seek)"]
         E5["Compactor & Retention Worker"]
+        E1 --> E2
+        E1 --> E3
+        E1 --> E4
+        E1 --> E5
     end
 
     subgraph MemoryTier ["Dual-Tier Memory Indexes (RAM)"]
-        M1["KeyDir (Hash Map for Point KV)"]
-        M2["Sparse Stream Index (< 15 MB Bounded)"]
+        M1["KeyDir (Point KV Index)"]
+        M2["Sparse Stream Index<br/>(Bounded under 15 MB)"]
     end
 
     subgraph DiskTier ["Physical Storage Layer (NAND Flash / NVMe)"]
@@ -44,10 +48,7 @@ flowchart TD
     end
 
     AppLayer --> FfiLayer
-    FfiLayer --> CoreEngine
-    E1 --> E2
-    E1 --> E3
-    E1 --> E4
+    FfiLayer --> E1
     E3 --> DiskTier
     E4 --> DiskTier
     E3 -. Updates .-> MemoryTier

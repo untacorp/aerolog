@@ -9,13 +9,13 @@ The `aerolog-uniffi` crate bridges the pure Rust core engine to Kotlin (Android/
 ```mermaid
 flowchart TD
     subgraph HostLang ["Host Platform Layer"]
-        K1["Kotlin / Android Runtime (JNA)"]
-        S1["Swift / Apple Runtime (C-FFI / ARC)"]
+        K1["Kotlin / Android Runtime<br/>(JNA Binding)"]
+        S1["Swift / Apple Runtime<br/>(C-FFI / ARC Binding)"]
     end
 
     subgraph UniFFIBoundary ["UniFFI Bridge Boundary"]
-        U1["Foreign Scaffolding & RustBuffer Serialization"]
-        U2["Foreign Object Handle Table (Arc<T>)"]
+        U1["Foreign Scaffolding &<br/>RustBuffer Serialization"]
+        U2["Foreign Object Handle Table<br/>(Arc Handles)"]
     end
 
     subgraph NativeRust ["Rust Engine Core"]
