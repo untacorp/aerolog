@@ -32,6 +32,6 @@ rootProject.name = "aerolog"
 
 include(":bindings:kotlin-jvm")
 
-if (System.getenv("ANDROID_HOME") != null || System.getenv("ANDROID_SDK_ROOT") != null || file("local.properties").exists()) {
+if (providers.gradleProperty("enableAndroid").orNull == "true" || System.getenv("ENABLE_ANDROID") == "true") {
     include(":bindings:kotlin")
 }
