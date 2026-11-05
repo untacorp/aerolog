@@ -124,4 +124,33 @@ fn test_uniffi_peer_replication_hlc() {
         .unwrap();
     assert_eq!(mutations.len(), 1);
     assert_eq!(mutations[0].payload, b"ONLINE");
+
+    let del_accepted = db
+        .delete_with_hlc("nodes".to_string(), "n1".to_string(), 3000, 0, 0x8888)
+        .unwrap();
+    assert!(del_accepted);
+    assert_eq!(db.get("nodes".to_string(), "n1".to_string()).unwrap(), None);
+}
+
+#[test]
+fn test_uniffi_snake_case_sync_mode() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().to_str().unwrap().to_string();
+
+    let db = FfiAeroLogDb::open_advanced(
+        path,
+        0x7777,
+        Some(1024 * 1024),
+        Some("sync_on_write".to_string()),
+    )
+    .unwrap();
+
+    let hlc = db
+        .put("sys".to_string(), "k".to_string(), b"v".to_vec())
+        .unwrap();
+    assert!(!hlc.is_empty());
+    assert_eq!(
+        db.get("sys".to_string(), "k".to_string()).unwrap(),
+        Some(b"v".to_vec())
+    );
 }

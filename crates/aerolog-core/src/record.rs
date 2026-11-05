@@ -130,6 +130,11 @@ impl RecordHeader {
         let node_id_hash = BigEndian::read_u64(&buf[18..26]);
         let key_len = BigEndian::read_u16(&buf[26..28]);
         let value_len = BigEndian::read_u32(&buf[28..32]);
+        if (value_len as usize) > MAX_VALUE_SIZE {
+            return Err(AeroLogError::SizeLimitExceeded(format!(
+                "Value length {value_len} exceeds maximum {MAX_VALUE_SIZE}"
+            )));
+        }
 
         Ok(Self {
             crc32,

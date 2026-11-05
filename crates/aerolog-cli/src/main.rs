@@ -118,44 +118,57 @@ enum StreamSubcommands {
 fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
+    let ok = match cli.command {
         Some(Commands::Put {
             collection,
             key,
             value,
         }) => {
             let db = open_db(&cli.db);
-            execute_put(&db, &collection, &key, value.as_bytes());
+            let ret = execute_put(&db, &collection, &key, value.as_bytes());
+            let _ = db.close();
+            ret
         }
         Some(Commands::Get { collection, key }) => {
             let db = open_db(&cli.db);
-            execute_get(&db, &collection, &key, true);
+            let ret = execute_get(&db, &collection, &key, true);
+            let _ = db.close();
+            ret
         }
         Some(Commands::Delete { collection, key }) => {
             let db = open_db(&cli.db);
-            execute_delete(&db, &collection, &key);
+            let ret = execute_delete(&db, &collection, &key);
+            let _ = db.close();
+            ret
         }
         Some(Commands::Scan { collection }) => {
             let db = open_db(&cli.db);
-            execute_scan(&db, &collection);
+            let ret = execute_scan(&db, &collection);
+            let _ = db.close();
+            ret
         }
         Some(Commands::Stream { command }) => {
             let db = open_db(&cli.db);
-            handle_stream_command(&db, command);
+            let ret = handle_stream_command(&db, command);
+            let _ = db.close();
+            ret
         }
         Some(Commands::Compact) => {
             let db = open_db(&cli.db);
-            execute_compact(&db);
+            let ret = execute_compact(&db);
+            let _ = db.close();
+            ret
         }
-        Some(Commands::Inspect) => {
-            inspect_database(&cli.db);
-        }
-        Some(Commands::Dump) => {
-            dump_database(&cli.db);
-        }
+        Some(Commands::Inspect) => inspect_database(&cli.db),
+        Some(Commands::Dump) => dump_database(&cli.db),
         Some(Commands::Repl) | None => {
             run_repl(&cli.db);
+            true
         }
+    };
+
+    if !ok {
+        std::process::exit(1);
     }
 }
 
@@ -170,36 +183,55 @@ fn open_db(path: &Path) -> AeroLogDb {
     })
 }
 
-fn execute_put(db: &AeroLogDb, collection: &str, key: &str, value: &[u8]) {
+fn execute_put(db: &AeroLogDb, collection: &str, key: &str, value: &[u8]) -> bool {
     match db.put(collection, key, value.to_vec()) {
-        Ok(hlc) => println!("OK [HLC: {hlc}]"),
-        Err(err) => eprintln!("Error: {err}"),
+        Ok(hlc) => {
+            println!("OK [HLC: {hlc}]");
+            true
+        }
+        Err(err) => {
+            eprintln!("Error: {err}");
+            false
+        }
     }
 }
 
-fn execute_get(db: &AeroLogDb, collection: &str, key: &str, exit_on_not_found: bool) {
+fn execute_get(db: &AeroLogDb, collection: &str, key: &str, exit_on_not_found: bool) -> bool {
     match db.get(collection, key) {
-        Ok(Some(val)) => print_payload(&val),
+        Ok(Some(val)) => {
+            print_payload(&val);
+            true
+        }
         Ok(None) => {
             if exit_on_not_found {
                 eprintln!("Key not found: {collection}:{key}");
-                std::process::exit(1);
+                false
             } else {
                 println!("(nil)");
+                true
             }
         }
-        Err(err) => eprintln!("Error: {err}"),
+        Err(err) => {
+            eprintln!("Error: {err}");
+            false
+        }
     }
 }
 
-fn execute_delete(db: &AeroLogDb, collection: &str, key: &str) {
+fn execute_delete(db: &AeroLogDb, collection: &str, key: &str) -> bool {
     match db.delete(collection, key) {
-        Ok(hlc) => println!("DELETED [HLC: {hlc}]"),
-        Err(err) => eprintln!("Error: {err}"),
+        Ok(hlc) => {
+            println!("DELETED [HLC: {hlc}]");
+            true
+        }
+        Err(err) => {
+            eprintln!("Error: {err}");
+            false
+        }
     }
 }
 
-fn execute_scan(db: &AeroLogDb, collection: &str) {
+fn execute_scan(db: &AeroLogDb, collection: &str) -> bool {
     match db.scan_collection(collection) {
         Ok(pairs) => {
             println!("Collection: {collection} ({} items)", pairs.len());
@@ -207,12 +239,16 @@ fn execute_scan(db: &AeroLogDb, collection: &str) {
                 let text = String::from_utf8_lossy(&v);
                 println!("  {k} => {text}");
             }
+            true
         }
-        Err(err) => eprintln!("Error: {err}"),
+        Err(err) => {
+            eprintln!("Error: {err}");
+            false
+        }
     }
 }
 
-fn execute_compact(db: &AeroLogDb) {
+fn execute_compact(db: &AeroLogDb) -> bool {
     println!("Running log compaction...");
     match db.compact() {
         Ok(stats) => {
@@ -228,12 +264,16 @@ fn execute_compact(db: &AeroLogDb) {
             println!("  Disk size after : {:.2} MB", after_mb);
             println!("  Records evicted : {}", stats.records_evicted);
             println!("  Space reclaimed : {:.1}%", saved_pct);
+            true
         }
-        Err(err) => eprintln!("Compaction failed: {err}"),
+        Err(err) => {
+            eprintln!("Compaction failed: {err}");
+            false
+        }
     }
 }
 
-fn handle_stream_command(db: &AeroLogDb, command: StreamSubcommands) {
+fn handle_stream_command(db: &AeroLogDb, command: StreamSubcommands) -> bool {
     let stream_id = match &command {
         StreamSubcommands::Append { stream_id, .. }
         | StreamSubcommands::Read { stream_id, .. }
@@ -243,14 +283,20 @@ fn handle_stream_command(db: &AeroLogDb, command: StreamSubcommands) {
         Ok(s) => s,
         Err(err) => {
             eprintln!("Error getting stream: {err}");
-            return;
+            return false;
         }
     };
 
     match command {
         StreamSubcommands::Append { payload, .. } => match stream.append(payload.into_bytes()) {
-            Ok((seq, hlc)) => println!("APPENDED [Seq: {seq}, HLC: {hlc}]"),
-            Err(err) => eprintln!("Error appending to stream: {err}"),
+            Ok((seq, hlc)) => {
+                println!("APPENDED [Seq: {seq}, HLC: {hlc}]");
+                true
+            }
+            Err(err) => {
+                eprintln!("Error appending to stream: {err}");
+                false
+            }
         },
         StreamSubcommands::Read { limit, .. } => match stream.read_recent(limit) {
             Ok(entries) => {
@@ -259,11 +305,16 @@ fn handle_stream_command(db: &AeroLogDb, command: StreamSubcommands) {
                     let text = String::from_utf8_lossy(&e.payload);
                     println!("  [#{:06} | HLC: {}] {}", e.sequence, e.hlc, text);
                 }
+                true
             }
-            Err(err) => eprintln!("Error reading stream: {err}"),
+            Err(err) => {
+                eprintln!("Error reading stream: {err}");
+                false
+            }
         },
         StreamSubcommands::Info { .. } => {
             println!("Stream '{stream_id}': {} entries", stream.total_entries());
+            true
         }
     }
 }
@@ -278,11 +329,11 @@ fn print_payload(val: &[u8]) {
     }
 }
 
-fn inspect_database(path: &Path) {
+fn inspect_database(path: &Path) -> bool {
     println!("Inspecting AeroLog Database at {:?}", path);
     if !path.exists() {
         eprintln!("Error: Path does not exist");
-        return;
+        return false;
     }
 
     let mut segment_ids = Vec::new();
@@ -321,12 +372,13 @@ fn inspect_database(path: &Path) {
             size as f64 / 1024.0
         );
     }
+    true
 }
 
-fn dump_database(path: &Path) {
+fn dump_database(path: &Path) -> bool {
     if !path.exists() {
         eprintln!("Error: Path {:?} does not exist", path);
-        return;
+        return false;
     }
 
     let reader = LogReader::new(path);
@@ -353,6 +405,26 @@ fn dump_database(path: &Path) {
             Ok(true)
         });
     }
+    true
+}
+
+fn fourth_token_offset(s: &str) -> usize {
+    let mut words = 0;
+    let mut in_word = false;
+    for (idx, ch) in s.char_indices() {
+        if !ch.is_whitespace() {
+            if !in_word {
+                in_word = true;
+                words += 1;
+                if words == 4 {
+                    return idx;
+                }
+            }
+        } else {
+            in_word = false;
+        }
+    }
+    s.len()
 }
 
 fn run_repl(db_path: &Path) {
@@ -410,15 +482,8 @@ fn run_repl(db_path: &Path) {
                 }
                 let collection = parts[1];
                 let key = parts[2];
-                let val_index = trimmed
-                    .char_indices()
-                    .filter(|&(_, c)| !c.is_whitespace())
-                    .nth(3);
-                let value = if let Some((idx, _)) = val_index {
-                    &trimmed[idx..]
-                } else {
-                    parts[3]
-                };
+                let val_idx = fourth_token_offset(trimmed);
+                let value = &trimmed[val_idx..];
                 execute_put(&db, collection, key, value.as_bytes());
             }
             "GET" => {
@@ -456,7 +521,8 @@ fn run_repl(db_path: &Path) {
                             println!("Usage: STREAM APPEND <stream_id> <payload>");
                             continue;
                         }
-                        let payload = parts[3..].join(" ");
+                        let val_idx = fourth_token_offset(trimmed);
+                        let payload = trimmed[val_idx..].to_string();
                         handle_stream_command(
                             &db,
                             StreamSubcommands::Append { stream_id, payload },
@@ -491,5 +557,24 @@ fn run_repl(db_path: &Path) {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fourth_token_offset() {
+        let input = "PUT users alice secret_value_here";
+        let offset = fourth_token_offset(input);
+        assert_eq!(&input[offset..], "secret_value_here");
+
+        let input_spaces = "  PUT   users   alice   value with spaces  ";
+        let offset_spaces = fourth_token_offset(input_spaces);
+        assert_eq!(&input_spaces[offset_spaces..], "value with spaces  ");
+
+        let short_input = "PUT users";
+        assert_eq!(fourth_token_offset(short_input), short_input.len());
     }
 }

@@ -125,4 +125,17 @@ mod tests {
         let res = decode(&malicious);
         assert!(matches!(res, Err(CborDecodeError::UnexpectedEof(_))));
     }
+
+    #[test]
+    fn test_cbor_overflow_rejected() {
+        // Major 0 with value 1 << 63 (exceeds i64::MAX)
+        let mut unsigned_overflow = vec![0x1B];
+        unsigned_overflow.extend_from_slice(&(1u64 << 63).to_be_bytes());
+        assert!(decode(&unsigned_overflow).is_err());
+
+        // Major 1 with value 1 << 63 (exceeds i64::MAX)
+        let mut negative_overflow = vec![0x3B];
+        negative_overflow.extend_from_slice(&(1u64 << 63).to_be_bytes());
+        assert!(decode(&negative_overflow).is_err());
+    }
 }

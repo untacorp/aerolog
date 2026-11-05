@@ -66,10 +66,14 @@ impl RecoveryManager {
         let reader = LogReader::new(base_dir);
         let mut latest_hlc = HlcTimestamp::ZERO;
         let mut total_records = 0u64;
+        let mut active_valid_offset = 0u64;
+        let active_file_id = segment_ids.last().copied().unwrap_or(1);
 
         for &file_id in &segment_ids {
+            let mut segment_valid_offset = 0u64;
             reader.scan_segment_streaming(file_id, |offset, record| {
                 let total_len = record.header.total_record_size() as u32;
+                segment_valid_offset = offset + total_len as u64;
                 let hlc = record.header.hlc;
                 if hlc > latest_hlc {
                     latest_hlc = hlc;
@@ -93,9 +97,22 @@ impl RecoveryManager {
                 total_records += 1;
                 Ok(true)
             })?;
+
+            if file_id == active_file_id {
+                active_valid_offset = segment_valid_offset;
+            }
         }
 
-        let active_file_id = segment_ids.last().copied().unwrap_or(1);
+        if !segment_ids.is_empty() {
+            let active_path = base_dir.join(SegmentFile::filename_for_id(active_file_id));
+            if let Ok(meta) = std::fs::metadata(&active_path) {
+                if meta.len() > active_valid_offset {
+                    let file = std::fs::OpenOptions::new().write(true).open(&active_path)?;
+                    file.set_len(active_valid_offset)?;
+                    file.sync_all()?;
+                }
+            }
+        }
 
         Ok(RecoveryReport {
             active_file_id,

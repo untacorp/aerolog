@@ -405,3 +405,49 @@ fn test_concurrent_compaction_and_continuous_reads_writes() {
 
     db.close().unwrap();
 }
+
+#[test]
+fn test_torn_write_recovery_and_append_continuity() {
+    use std::io::Write;
+
+    let dir = tempdir().unwrap();
+    let config = AeroLogConfig::new(0xDDD)
+        .with_sync_mode(SyncMode::SyncOnWrite)
+        .with_max_segment_size(1024 * 1024);
+
+    {
+        let db = AeroLogDb::open(dir.path(), config.clone()).unwrap();
+        db.put("users", "alice", b"alice_val".to_vec()).unwrap();
+        db.close().unwrap();
+    }
+
+    // Simulate crash tearing: append incomplete header and corrupt trailing bytes
+    let seg_path = dir.path().join("data-000001.aerolog");
+    {
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&seg_path)
+            .unwrap();
+        // 0x41 0x4C magic bytes with garbage trailing payload
+        file.write_all(&[0x41, 0x4C, 0x01, 0x00, 0xFF, 0xFF, 0xEE, 0xDD])
+            .unwrap();
+        file.sync_all().unwrap();
+    }
+
+    // Reopen 1: scanner isolates trailing corruption, truncates active segment
+    {
+        let db = AeroLogDb::open(dir.path(), config.clone()).unwrap();
+        assert_eq!(db.get("users", "alice").unwrap().unwrap(), b"alice_val");
+        // Append new record after recovery
+        db.put("users", "bob", b"bob_val".to_vec()).unwrap();
+        db.close().unwrap();
+    }
+
+    // Reopen 2: verify both records survive without corruption from previous crash
+    {
+        let db = AeroLogDb::open(dir.path(), config).unwrap();
+        assert_eq!(db.get("users", "alice").unwrap().unwrap(), b"alice_val");
+        assert_eq!(db.get("users", "bob").unwrap().unwrap(), b"bob_val");
+        db.close().unwrap();
+    }
+}

@@ -156,7 +156,8 @@ impl FfiAeroLogDb {
             config = config.with_max_segment_size(size);
         }
         if let Some(mode) = sync_mode {
-            let sm = match mode.to_lowercase().as_str() {
+            let normalized = mode.replace(['-', '_'], "").to_lowercase();
+            let sm = match normalized.as_str() {
                 "synconwrite" => SyncMode::SyncOnWrite,
                 "osdefault" => SyncMode::OsDefault,
                 _ => SyncMode::Periodic,
@@ -205,6 +206,21 @@ impl FfiAeroLogDb {
     pub fn delete(&self, collection: String, key: String) -> Result<String, AeroLogFfiError> {
         let hlc = self.inner.delete(&collection, &key)?;
         Ok(hlc.to_string())
+    }
+
+    /// Soft-deletes a key with an explicit remote HLC timestamp (peer replication).
+    /// Returns `true` if accepted under Last-Write-Wins rules.
+    pub fn delete_with_hlc(
+        &self,
+        collection: String,
+        key: String,
+        physical_time: u64,
+        logical_counter: u16,
+        node_id_hash: u64,
+    ) -> Result<bool, AeroLogFfiError> {
+        let hlc = HlcTimestamp::new(physical_time, logical_counter, node_id_hash);
+        let accepted = self.inner.delete_with_hlc(&collection, &key, hlc)?;
+        Ok(accepted)
     }
 
     /// Retrieves an append-only stream partition handle.

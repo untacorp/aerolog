@@ -98,10 +98,16 @@ fn decode_one(
     let data_start = offset + header_len;
 
     match major {
-        0 => Ok((CborValue::Integer(num as i64), total_len)),
+        0 => {
+            if num > i64::MAX as u64 {
+                return Err(CborDecodeError::UnknownTag(major));
+            }
+            Ok((CborValue::Integer(num as i64), total_len))
+        }
         1 => {
-            // RFC 8949 major type 1 is -1 - num.
-            // In two's complement, -1 - n == !n, avoiding signed overflow on boundary values.
+            if num > i64::MAX as u64 {
+                return Err(CborDecodeError::UnknownTag(major));
+            }
             let val = (!num) as i64;
             Ok((CborValue::Integer(val), total_len))
         }

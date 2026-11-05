@@ -177,6 +177,7 @@ impl LogReader {
         }
 
         let mut file = File::open(&segment_path)?;
+        let file_len = file.metadata()?.len();
         if start_offset > 0 {
             file.seek(SeekFrom::Start(start_offset))?;
         }
@@ -196,13 +197,20 @@ impl LogReader {
 
             let header = match RecordHeader::decode(&header_buf) {
                 Ok(h) => h,
-                Err(AeroLogError::InvalidMagic { .. }) => {
+                Err(AeroLogError::InvalidMagic { .. })
+                | Err(AeroLogError::UnsupportedVersion(_))
+                | Err(AeroLogError::CorruptRecord { .. })
+                | Err(AeroLogError::SizeLimitExceeded(_)) => {
                     break;
                 }
                 Err(e) => return Err(e),
             };
 
             let payload_size = (header.key_len as usize) + (header.value_len as usize);
+            if offset + (HEADER_SIZE as u64) + (payload_size as u64) > file_len {
+                break;
+            }
+
             let mut payload = vec![0u8; payload_size];
             if let Err(e) = reader.read_exact(&mut payload) {
                 if e.kind() == std::io::ErrorKind::UnexpectedEof {
