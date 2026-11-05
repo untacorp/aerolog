@@ -16,7 +16,7 @@ repository = "https://github.com/untacorp/aerolog"
 homepage = "https://github.com/untacorp/aerolog"
 readme = "README.md"
 keywords = ["database", "embedded", "bitcask", "local-first", "nosql"]
-categories = ["database-implementations", "embedded-database"]
+categories = ["database-implementations", "embedded"]
 
 [workspace.dependencies]
 crc32fast = "1.4"
