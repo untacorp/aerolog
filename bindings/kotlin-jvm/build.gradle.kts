@@ -15,15 +15,21 @@
 plugins {
     kotlin("jvm")
     `maven-publish`
+    signing
 }
 
-group = "io.aerolog"
+group = "io.github.untacorp"
 version = "0.1.0"
+
+base {
+    archivesName.set("aerolog-jvm")
+}
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
     withSourcesJar()
+    withJavadocJar()
 }
 
 sourceSets {
@@ -31,10 +37,11 @@ sourceSets {
         kotlin {
             srcDirs("../kotlin/src/main/kotlin")
         }
-        resources {
-            srcDirs("src/main/resources")
-        }
     }
+}
+
+tasks.withType<ProcessResources> {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 dependencies {
@@ -47,11 +54,62 @@ dependencies {
 publishing {
     publications {
         create<MavenPublication>("mavenJava") {
-            groupId = "io.aerolog"
+            groupId = "io.github.untacorp"
             artifactId = "aerolog-jvm"
             version = "0.1.0"
 
             from(components["java"])
+
+            pom {
+                name.set("aerolog-jvm")
+                description.set("AeroLog: Universal crash-resilient local-first append-only storage engine for JVM")
+                url.set("https://github.com/untacorp/aerolog")
+
+                licenses {
+                    license {
+                        name.set("The Apache License, Version 2.0")
+                        url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("aerolog-authors")
+                        name.set("AeroLog Authors")
+                        email.set("maintainers@aerolog.dev")
+                    }
+                }
+
+                scm {
+                    connection.set("scm:git:git://github.com/untacorp/aerolog.git")
+                    developerConnection.set("scm:git:ssh://github.com/untacorp/aerolog.git")
+                    url.set("https://github.com/untacorp/aerolog")
+                }
+            }
         }
     }
+
+    repositories {
+        maven {
+            name = "staging"
+            url = uri(rootProject.layout.buildDirectory.dir("staging-repo"))
+        }
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/untacorp/aerolog")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR") ?: ""
+                password = System.getenv("GITHUB_TOKEN") ?: ""
+            }
+        }
+    }
+}
+
+val signingKey = System.getenv("GPG_PRIVATE_KEY")
+val signingPassword = System.getenv("GPG_PASSPHRASE") ?: ""
+if (!signingKey.isNullOrBlank()) {
+    signing.useInMemoryPgpKeys(signingKey, signingPassword)
+    signing.sign(publishing.publications["mavenJava"])
+} else {
+    signing.isRequired = false
 }

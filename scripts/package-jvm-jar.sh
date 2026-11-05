@@ -111,7 +111,13 @@ echo "Multiplatform JVM resources configured under: ${JVM_RESOURCES_DIR}"
 if [ "${BUILD_JAR}" = true ]; then
     echo "Packaging JAR archive to: ${JAR_OUTPUT}"
     mkdir -p "${ROOT_DIR}/target"
-    cd "${JVM_RESOURCES_DIR}"
-    jar cf "${JAR_OUTPUT}" .
-    echo "JAR successfully assembled."
+    if [ -x "${ROOT_DIR}/gradlew" ]; then
+        cd "${ROOT_DIR}"
+        ./gradlew :bindings:kotlin-jvm:jar --no-daemon
+        find "${ROOT_DIR}/bindings/kotlin-jvm/build/libs" -maxdepth 1 -name "aerolog-jvm-*.jar" ! -name "*-sources.jar" ! -name "*-javadoc.jar" -exec cp {} "${JAR_OUTPUT}" \;
+    else
+        cd "${JVM_RESOURCES_DIR}"
+        jar cf "${JAR_OUTPUT}" .
+    fi
+    echo "JAR successfully assembled at: ${JAR_OUTPUT}"
 fi

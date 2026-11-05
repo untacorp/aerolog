@@ -24,7 +24,7 @@ Native dynamic libraries are bundled directly inside the JAR archive and unpacke
 
 ```kotlin
 dependencies {
-    implementation("io.aerolog:aerolog-jvm:0.1.0")
+    implementation("io.github.untacorp:aerolog-jvm:0.1.0")
     implementation("net.java.dev.jna:jna:5.14.0")
 }
 ```
@@ -33,7 +33,7 @@ dependencies {
 
 ```xml
 <dependency>
-    <groupId>io.aerolog</groupId>
+    <groupId>io.github.untacorp</groupId>
     <artifactId>aerolog-jvm</artifactId>
     <version>0.1.0</version>
 </dependency>

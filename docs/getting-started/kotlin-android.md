@@ -12,7 +12,7 @@ Add the dependency to your module's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("io.aerolog:aerolog-android:0.1.0")
+    implementation("io.github.untacorp:aerolog-android:0.1.0")
     implementation("net.java.dev.jna:jna:5.14.0@aar")
 }
 ```

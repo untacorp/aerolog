@@ -11,9 +11,15 @@ on:
         required: true
         type: boolean
         default: true
+      publish_maven:
+        description: 'Publish JVM package to Maven Central'
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build-release-binaries:
@@ -25,6 +31,10 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            binary_name: aerolog
+            archive_suffix: tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
             binary_name: aerolog
             archive_suffix: tar.gz
           - os: macos-latest
@@ -43,6 +53,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Install aarch64 cross-linker
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
       - name: Install Stable Rust
         uses: dtolnay/rust-toolchain@stable
@@ -99,12 +115,18 @@ jobs:
           path: cdylib-${{ matrix.target }}/*
 
   create-github-release:
-    name: Create GitHub Release
+    name: Create GitHub Release & Publish Maven Central
     needs: build-release-binaries
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
       - name: Download all binary artifacts
         uses: actions/download-artifact@v8
@@ -122,10 +144,66 @@ jobs:
 
       - name: Package Multiplatform JVM JAR
         run: |
-          chmod +x scripts/package-jvm-jar.sh
+          chmod +x gradlew scripts/package-jvm-jar.sh
           scripts/package-jvm-jar.sh --artifacts-dir cdylib-artifacts --jar
           cp target/aerolog-jvm-*.jar release-artifacts/
         shell: bash
+
+      - name: Build, Sign, and Stage Maven Artifacts
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ""
+        run: |
+          ./gradlew :bindings:kotlin-jvm:publishAllPublicationsToStagingRepository --no-daemon
+
+      - name: Publish to GitHub Packages
+        if: env.GPG_PRIVATE_KEY != ''
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ""
+        run: |
+          ./gradlew :bindings:kotlin-jvm:publishAllPublicationsToGitHubPackagesRepository --no-daemon || echo "Warning: GitHub Packages publishing skipped."
+
+      - name: Package Central Bundle
+        run: |
+          mkdir -p build/staging-repo
+          cd build/staging-repo
+          zip -r ../bundle.zip io/ -x "*/maven-metadata*"
+          ls -la ../bundle.zip
+          cp ../bundle.zip ../../release-artifacts/aerolog-maven-bundle.zip
+
+      - name: Upload to Sonatype Central Portal
+        if: (github.event_name == 'push' || inputs.publish_maven == true) && env.SONATYPE_USERNAME != '' && env.SONATYPE_PASSWORD != ''
+        env:
+          SONATYPE_USERNAME: ${{ secrets.CENTRAL_SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_PASSWORD }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ] || [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            VERSION="0.1.0"
+          fi
+
+          AUTH_HEADER="Bearer $(printf '%s:%s' "$SONATYPE_USERNAME" "$SONATYPE_PASSWORD" | base64 -w 0)"
+
+          echo "Uploading bundle for version $VERSION to Sonatype Central Portal..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://central.sonatype.com/api/v1/publisher/upload?publishingType=AUTOMATIC&name=aerolog-${VERSION}" \
+            -H "Authorization: $AUTH_HEADER" \
+            -F "bundle=@build/bundle.zip;type=application/octet-stream")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $BODY"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Error: Failed to upload to Sonatype Central Portal"
+            exit 1
+          fi
+          echo "Deployment initiated successfully on Sonatype Central Portal. Deployment ID: $BODY"
 
       - name: Generate Checksums
         run: |

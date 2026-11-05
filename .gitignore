@@ -2,6 +2,10 @@
 target/
 **/*.rs.bk
 
+# Gradle build artifacts
+.gradle/
+build/
+
 # IDE & Editor files
 .idea/
 *.iml
