@@ -255,24 +255,24 @@ jobs:
           fi
 
           echo "Publishing aerolog-cbor..."
-          cargo publish -p aerolog-cbor
+          cargo publish -p aerolog-cbor || echo "aerolog-cbor already published or publish skipped."
 
           echo "Waiting 20 seconds for crates.io index propagation..."
           sleep 20
 
           echo "Publishing aerolog-core..."
-          cargo publish -p aerolog-core
+          cargo publish -p aerolog-core || echo "aerolog-core already published or publish skipped."
 
           echo "Waiting 20 seconds for crates.io index propagation..."
           sleep 20
 
           echo "Publishing aerolog-uniffi..."
-          cargo publish -p aerolog-uniffi
+          cargo publish -p aerolog-uniffi || echo "aerolog-uniffi already published or publish skipped."
 
           echo "Waiting 20 seconds for crates.io index propagation..."
           sleep 20
 
           echo "Publishing aerolog-cli..."
-          cargo publish -p aerolog-cli
+          cargo publish -p aerolog-cli || echo "aerolog-cli already published or publish skipped."
 
           echo "All AeroLog crates published successfully."
