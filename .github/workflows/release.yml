@@ -49,8 +49,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build aerolog-cli binary
-        run: cargo build --release -p aerolog-cli --target ${{ matrix.target }}
+      - name: Build aerolog-cli binary and uniffi dynamic library
+        run: |
+          cargo build --release -p aerolog-cli --target ${{ matrix.target }}
+          cargo build --release -p aerolog-uniffi --target ${{ matrix.target }}
 
       - name: Package Unix Archive
         if: matrix.os != 'windows-latest'
@@ -60,6 +62,14 @@ jobs:
           cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "$RELEASE_DIR/"
           cp README.md LICENSE "$RELEASE_DIR/"
           tar -czvf "aerolog-${{ matrix.target }}.tar.gz" "$RELEASE_DIR"
+
+          CDYLIB_DIR="cdylib-${{ matrix.target }}"
+          mkdir -p "$CDYLIB_DIR"
+          if [[ "${{ matrix.target }}" == *"apple"* ]]; then
+            cp "target/${{ matrix.target }}/release/libaerolog_uniffi.dylib" "$CDYLIB_DIR/libaerolog_uniffi_${{ matrix.target }}.dylib"
+          else
+            cp "target/${{ matrix.target }}/release/libaerolog_uniffi.so" "$CDYLIB_DIR/libaerolog_uniffi_${{ matrix.target }}.so"
+          fi
         shell: bash
 
       - name: Package Windows Archive
@@ -70,6 +80,10 @@ jobs:
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" -Destination $RELEASE_DIR
           Copy-Item README.md, LICENSE -Destination $RELEASE_DIR
           Compress-Archive -Path $RELEASE_DIR -DestinationPath "aerolog-${{ matrix.target }}.zip"
+
+          $CDYLIB_DIR = "cdylib-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path $CDYLIB_DIR
+          Copy-Item "target/${{ matrix.target }}/release/aerolog_uniffi.dll" -Destination "$CDYLIB_DIR/aerolog_uniffi_${{ matrix.target }}.dll"
         shell: pwsh
 
       - name: Upload Binary Artifact
@@ -77,6 +91,12 @@ jobs:
         with:
           name: binary-${{ matrix.target }}
           path: aerolog-${{ matrix.target }}.${{ matrix.archive_suffix }}
+
+      - name: Upload CDYLIB Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: cdylib-${{ matrix.target }}
+          path: cdylib-${{ matrix.target }}/*
 
   create-github-release:
     name: Create GitHub Release
@@ -92,6 +112,20 @@ jobs:
           pattern: binary-*
           merge-multiple: true
           path: release-artifacts
+
+      - name: Download all cdylib artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: cdylib-*
+          merge-multiple: true
+          path: cdylib-artifacts
+
+      - name: Package Multiplatform JVM JAR
+        run: |
+          chmod +x scripts/package-jvm-jar.sh
+          scripts/package-jvm-jar.sh --artifacts-dir cdylib-artifacts --jar
+          cp target/aerolog-jvm-*.jar release-artifacts/
+        shell: bash
 
       - name: Generate Checksums
         run: |

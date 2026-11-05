@@ -9,6 +9,7 @@ Welcome to the AeroLog getting started guide. AeroLog can be embedded directly i
 1. [Installation & Setup](installation.md): Add AeroLog to your Rust `Cargo.toml`, Gradle build file, or Swift Package Manager manifest.
 2. [5-Minute Quickstart](quickstart.md): Multi-language side-by-side walkthrough of opening a database, writing records, point reads, and stream appends.
 3. [Embedded Rust Guide](rust-guide.md): Advanced configurations, concurrent operations, and custom retention policies in Rust.
-4. [Android & JVM Guide](kotlin-android.md): Kotlin coroutines integration, lifecycle management, and native `.so` bundling.
-5. [Apple Platforms Guide](swift-apple.md): iOS and macOS Swift integration using Swift Package Manager and ARC.
-6. [CLI Diagnostics Tool](cli-tool.md): Interactive REPL, inspection of binary segments, dumping records, and offline compaction.
+4. [Android Guide](kotlin-android.md): Kotlin coroutines integration, lifecycle management, and Android AAR bundling.
+5. [Multiplatform JVM Guide](jvm-desktop.md): Universal JVM native bindings for Linux, macOS, and Windows.
+6. [Apple Platforms Guide](swift-apple.md): iOS and macOS Swift integration using Swift Package Manager and ARC.
+7. [CLI Diagnostics Tool](cli-tool.md): Interactive REPL, inspection of binary segments, dumping records, and offline compaction.

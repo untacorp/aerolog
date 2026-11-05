@@ -18,8 +18,14 @@ Thumbs.db
 site/
 bindings/kotlin/build/
 bindings/kotlin/.gradle/
+bindings/kotlin-jvm/build/
+bindings/kotlin-jvm/.gradle/
 bindings/swift/.build/
 bindings/swift/.swiftpm/
+bindings/kotlin-jvm/src/main/resources/**/*.so
+bindings/kotlin-jvm/src/main/resources/**/*.dylib
+bindings/kotlin-jvm/src/main/resources/**/*.dll
+bindings/kotlin/src/main/jniLibs/**/*.so
 
 # Test output & temp directories
 tmp/
