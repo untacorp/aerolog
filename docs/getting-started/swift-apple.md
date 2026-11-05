@@ -77,7 +77,7 @@ extension StorageService {
     public func appendMessage(roomId: String, messageText: String) async throws -> UInt64 {
         let stream = try await db.stream(streamId: "chat:\(roomId)")
         let entry = try stream.append(text: messageText)
-        return entry.sequenceNumber
+        return entry.sequence
     }
 
     public func fetchRecentMessages(roomId: String, limit: UInt32 = 20) async throws -> [String] {

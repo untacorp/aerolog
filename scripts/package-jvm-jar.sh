@@ -61,13 +61,13 @@ if [ -n "${ARTIFACTS_DIR}" ] && [ -d "${ARTIFACTS_DIR}" ]; then
     find "${ARTIFACTS_DIR}" -type f \( -name "*linux*aarch64*.so" -o -name "*aarch64*linux*.so" -o -name "*arm64*linux*.so" \) \
         -exec cp {} "${JVM_RESOURCES_DIR}/linux-aarch64/libaerolog_uniffi.so" \; 2>/dev/null || true
 
-    find "${ARTIFACTS_DIR}" -type f \( -name "*darwin*aarch64*.dylib" -o -name "*aarch64*darwin*.dylib" -o -name "*arm64*apple*.dylib" \) \
+    find "${ARTIFACTS_DIR}" -type f \( -name "*darwin*aarch64*.dylib" -o -name "*aarch64*darwin*.dylib" -o -name "*arm64*apple*.dylib" -o -name "*aarch64*apple*.dylib" \) \
         -exec cp {} "${JVM_RESOURCES_DIR}/darwin-aarch64/libaerolog_uniffi.dylib" \; 2>/dev/null || true
 
-    find "${ARTIFACTS_DIR}" -type f \( -name "*darwin*x86_64*.dylib" -o -name "*x86_64*darwin*.dylib" \) \
+    find "${ARTIFACTS_DIR}" -type f \( -name "*darwin*x86_64*.dylib" -o -name "*x86_64*darwin*.dylib" -o -name "*x86_64*apple*.dylib" \) \
         -exec cp {} "${JVM_RESOURCES_DIR}/darwin-x86-64/libaerolog_uniffi.dylib" \; 2>/dev/null || true
 
-    find "${ARTIFACTS_DIR}" -type f \( -name "*win*x86_64*.dll" -o -name "*x86_64*windows*.dll" -o -name "*.dll" \) \
+    find "${ARTIFACTS_DIR}" -type f \( -name "*win*x86_64*.dll" -o -name "*x86_64*windows*.dll" -o -name "*x86_64*pc*windows*.dll" -o -name "*.dll" \) \
         -exec cp {} "${JVM_RESOURCES_DIR}/win32-x86-64/aerolog_uniffi.dll" \; 2>/dev/null || true
 else
     echo "No external artifacts directory specified. Compiling host native cdylib..."

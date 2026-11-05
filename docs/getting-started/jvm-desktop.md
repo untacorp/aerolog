@@ -64,7 +64,7 @@ fun main() {
         // Append-only event streams
         val stream = db.stream("audit_events")
         val entry = stream.append("USER_LOGIN: uid=42")
-        println("Appended event sequence: ${entry.sequenceNumber}")
+        println("Appended event sequence: ${entry.sequence}")
 
         val recent = stream.readRecent(5u)
         recent.forEach { record ->
@@ -98,7 +98,7 @@ public class Main {
             // Append-only stream
             AeroLogStream stream = db.stream("telemetry");
             FfiStreamEntry entry = stream.append("METRIC:cpu=12%".getBytes());
-            System.out.println("Recorded entry sequence: " + entry.getSequenceNumber());
+            System.out.println("Recorded entry sequence: " + entry.getSequence());
         }
     }
 }

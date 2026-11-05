@@ -75,11 +75,11 @@ rm -rf "${OUTPUT_XCFRAMEWORK}"
 echo "Packaging AeroLogUniFFI.xcframework..."
 xcodebuild -create-xcframework \
     -library "${ROOT_DIR}/target/aarch64-apple-ios/release/libaerolog_uniffi.a" \
-    -headers "${ROOT_DIR}/bindings/swift" \
+    -headers "${ROOT_DIR}/bindings/swift/include" \
     -library "${INTERMEDIATE_DIR}/ios-sim/libaerolog_uniffi.a" \
-    -headers "${ROOT_DIR}/bindings/swift" \
+    -headers "${ROOT_DIR}/bindings/swift/include" \
     -library "${INTERMEDIATE_DIR}/macos/libaerolog_uniffi.a" \
-    -headers "${ROOT_DIR}/bindings/swift" \
+    -headers "${ROOT_DIR}/bindings/swift/include" \
     -output "${OUTPUT_XCFRAMEWORK}"
 
 echo "Apple XCFramework successfully built at: ${OUTPUT_XCFRAMEWORK}"

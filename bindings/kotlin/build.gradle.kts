@@ -39,7 +39,7 @@ android {
     sourceSets {
         getByName("main") {
             manifest.srcFile("src/main/AndroidManifest.xml")
-            java.setSrcDirs(listOf("src/main/kotlin", "."))
+            java.setSrcDirs(listOf("src/main/kotlin"))
             jniLibs.setSrcDirs(listOf("src/main/jniLibs"))
         }
     }

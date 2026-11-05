@@ -71,8 +71,8 @@ cargo ndk \
 
 echo "Generating Kotlin UniFFI bindings..."
 cargo run -p aerolog-uniffi --bin uniffi-bindgen generate \
-    --library "${ROOT_DIR}/target/release/libaerolog_uniffi.so" \
+    --library "${TARGET_OUT_DIR}/arm64-v8a/libaerolog_uniffi.so" \
     --language kotlin \
-    --out-dir "${ROOT_DIR}/bindings/kotlin"
+    --out-dir "${ROOT_DIR}/bindings/kotlin/src/main/kotlin"
 
 echo "Android native binaries successfully compiled to: ${TARGET_OUT_DIR}"

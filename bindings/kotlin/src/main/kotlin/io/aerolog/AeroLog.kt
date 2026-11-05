@@ -161,7 +161,11 @@ class AeroLog private constructor(private val raw: FfiAeroLogDb) : AutoCloseable
     }
 
     override fun close() {
-        raw.shutdown()
+        try {
+            raw.shutdown()
+        } finally {
+            raw.close()
+        }
     }
 }
 

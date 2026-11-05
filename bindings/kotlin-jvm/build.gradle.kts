@@ -29,11 +29,7 @@ java {
 sourceSets {
     main {
         kotlin {
-            srcDirs(
-                "../kotlin/src/main/kotlin",
-                "../kotlin"
-            )
-            exclude("**/build/**")
+            srcDirs("../kotlin/src/main/kotlin")
         }
         resources {
             srcDirs("src/main/resources")

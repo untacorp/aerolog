@@ -33,22 +33,10 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "AeroLogUniFFIFFI",
-            path: "bindings/swift",
-            sources: [],
-            publicHeadersPath: "."
-        ),
-        .target(
-            name: "AeroLogUniFFI",
-            dependencies: ["AeroLogUniFFIFFI"],
-            path: "bindings/swift",
-            sources: ["AeroLogUniFFI.swift"]
-        ),
-        .target(
             name: "AeroLog",
-            dependencies: ["AeroLogUniFFI"],
             path: "bindings/swift",
-            sources: ["AeroLog.swift"]
+            sources: ["AeroLog.swift", "AeroLogUniFFI.swift"],
+            publicHeadersPath: "include"
         ),
     ]
 )

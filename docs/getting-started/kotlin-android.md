@@ -61,7 +61,7 @@ Streams provide high-throughput sequential appends for chat messaging, audit tra
 suspend fun appendChatMessage(roomId: String, messageText: String): ULong = withContext(Dispatchers.IO) {
     val stream = db.stream("chat:$roomId")
     val entry = stream.append(messageText)
-    entry.sequenceNumber
+    entry.sequence
 }
 
 suspend fun loadRecentMessages(roomId: String, count: UInt): List<String> = withContext(Dispatchers.IO) {
