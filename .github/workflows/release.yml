@@ -114,9 +114,57 @@ jobs:
           name: cdylib-${{ matrix.target }}
           path: cdylib-${{ matrix.target }}/*
 
+  build-android-binaries:
+    name: Build Android Binaries & AAR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Compile Android native libraries
+        run: |
+          chmod +x scripts/build-android.sh
+          scripts/build-android.sh
+
+      - name: Build Android AAR
+        run: |
+          chmod +x gradlew
+          ./gradlew :bindings:kotlin:bundleReleaseAar -PenableAndroid=true --no-daemon
+
+      - name: Stage Android AAR Artifact
+        run: |
+          mkdir -p android-aar
+          cp bindings/kotlin/build/outputs/aar/kotlin-release.aar android-aar/aerolog-android-0.1.0.aar
+
+      - name: Upload Android AAR Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: binary-android
+          path: android-aar/aerolog-android-0.1.0.aar
+
+      - name: Upload Android JNI libs
+        uses: actions/upload-artifact@v7
+        with:
+          name: jni-android
+          path: bindings/kotlin/src/main/jniLibs/**
+
   create-github-release:
     name: Create GitHub Release & Publish Maven Central
-    needs: build-release-binaries
+    needs: [build-release-binaries, build-android-binaries]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -142,6 +190,12 @@ jobs:
           merge-multiple: true
           path: cdylib-artifacts
 
+      - name: Download Android JNI artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: jni-android
+          path: bindings/kotlin/src/main/jniLibs
+
       - name: Package Multiplatform JVM JAR
         run: |
           chmod +x gradlew scripts/package-jvm-jar.sh
@@ -154,7 +208,7 @@ jobs:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ""
         run: |
-          ./gradlew :bindings:kotlin-jvm:publishAllPublicationsToStagingRepository --no-daemon
+          ./gradlew :bindings:kotlin-jvm:publishAllPublicationsToStagingRepository :bindings:kotlin:publishAllPublicationsToStagingRepository -PenableAndroid=true --no-daemon
 
       - name: Publish to GitHub Packages
         if: env.GPG_PRIVATE_KEY != ''
@@ -164,7 +218,7 @@ jobs:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ""
         run: |
-          ./gradlew :bindings:kotlin-jvm:publishAllPublicationsToGitHubPackagesRepository --no-daemon || echo "Warning: GitHub Packages publishing skipped."
+          ./gradlew :bindings:kotlin-jvm:publishAllPublicationsToGitHubPackagesRepository :bindings:kotlin:publishAllPublicationsToGitHubPackagesRepository -PenableAndroid=true --no-daemon || echo "Warning: GitHub Packages publishing skipped."
 
       - name: Package Central Bundle
         run: |
