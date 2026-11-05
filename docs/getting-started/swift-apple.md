@@ -1,86 +1,103 @@
 # Apple Platforms Guide (Swift)
 
-AeroLog provides seamless, memory-safe Swift bindings for iOS, iPadOS, macOS, and visionOS via Mozilla UniFFI.
+AeroLog provides thread-safe Swift bindings for iOS, iPadOS, macOS, and visionOS with modern Swift concurrency (`actor` and `async/await`).
 
 ---
 
-## 1. Opening and Initializing AeroLog in Swift
+## 1. Installation
 
-Initialize the database inside an actor or storage service class:
+### Swift Package Manager (Xcode)
+
+Add AeroLog to your dependencies in `Package.swift`:
 
 ```swift
-import AeroLogUniFFI
+dependencies: [
+    .package(url: "https://github.com/untacorp/aerolog.git", from: "0.1.0")
+]
+```
+
+Or add the repository URL directly via Xcode: **File > Add Package Dependencies**.
+
+---
+
+## 2. Opening and Initializing AeroLog
+
+Initialize `AeroLog` inside an actor or storage service. By default, `AeroLog(name:)` places database files in the platform's standard `Application Support` directory:
+
+```swift
+import AeroLog
 import Foundation
 
-public actor AeroLogStorageService {
-    private let db: FfiAeroLogDb
+public actor StorageService {
+    private let db: AeroLog
 
-    public init(directoryURL: URL) throws {
-        try FileManager.default.createDirectory(
-            at: directoryURL,
-            withIntermediateDirectories: true
-        )
-        self.db = try FfiAeroLogDb.open(
-            path: directoryURL.path,
-            maxSegmentSizeBytes: 64 * 1024 * 1024 // 64 MB
-        )
+    public init() throws {
+        // Automatically resolves Application Support / aerolog_data
+        self.db = try AeroLog(name: "app_data")
     }
 
-    deinit {
-        db.shutdown()
+    public init(customURL: URL) throws {
+        self.db = try AeroLog(dataDirectory: customURL)
+    }
+
+    public func close() async throws {
+        try await db.close()
     }
 }
 ```
 
 ---
 
-## 2. Point Key-Value Operations
+## 3. Point Key-Value Operations
 
 ```swift
-extension AeroLogStorageService {
-    public func save(collection: String, key: String, data: Data) throws {
-        try db.put(collection: collection, key: key, value: data)
+extension StorageService {
+    public func saveUserProfile(userId: String, json: String) async throws {
+        _ = try await db.put(collection: "profiles", key: userId, text: json)
     }
 
-    public func fetch(collection: String, key: String) throws -> Data? {
-        try db.get(collection: collection, key: key)
+    public func fetchUserProfile(userId: String) async throws -> String? {
+        return try await db.getText(collection: "profiles", key: userId)
     }
 
-    public func delete(collection: String, key: String) throws {
-        try db.delete(collection: collection, key: key)
+    public func deleteUserProfile(userId: String) async throws {
+        _ = try await db.delete(collection: "profiles", key: userId)
     }
 }
 ```
 
 ---
 
-## 3. Streaming Event Log
+## 4. Streaming Event Log
+
+Append-only streams provide sequential storage for event logs, chat rooms, and telemetry:
 
 ```swift
-extension AeroLogStorageService {
-    public func appendEvent(streamName: String, payload: Data) throws -> UInt64 {
-        let stream = try db.stream(streamName: streamName)
-        return try stream.append(payload: payload)
+extension StorageService {
+    public func appendMessage(roomId: String, messageText: String) async throws -> UInt64 {
+        let stream = try await db.stream(streamId: "chat:\(roomId)")
+        let entry = try stream.append(text: messageText)
+        return entry.sequenceNumber
     }
 
-    public func fetchRecent(streamName: String, limit: UInt32) throws -> [Data] {
-        let stream = try db.stream(streamName: streamName)
+    public func fetchRecentMessages(roomId: String, limit: UInt32 = 20) async throws -> [String] {
+        let stream = try await db.stream(streamId: "chat:\(roomId)")
         let entries = try stream.readRecent(limit: limit)
-        return entries.map { $0.payload }
+        return entries.compactMap { String(data: $0.payload, encoding: .utf8) }
     }
 }
 ```
 
 ---
 
-## 4. Background Compaction
+## 5. Background Compaction
 
-Invoke compaction during app background refresh or idle states:
+Trigger compaction during background tasks (such as `BGProcessingTask` in iOS):
 
 ```swift
-extension AeroLogStorageService {
-    public func performCompaction() throws -> FfiCompactionStats {
-        return try db.compact()
+extension StorageService {
+    public func runMaintenance() async throws -> FfiCompactionStats {
+        return try await db.compact()
     }
 }
 ```
