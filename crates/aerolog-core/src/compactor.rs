@@ -22,6 +22,7 @@ use crate::log::writer::LogWriter;
 use crate::record::RecordType;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Metrics generated upon completion of a log compaction cycle.
@@ -49,7 +50,7 @@ impl LogCompactor {
         keydir: &KeyDir,
         config: &AeroLogConfig,
     ) -> Result<CompactionStats> {
-        Self::compact_with_retentions(base_dir, active_file_id, keydir, config, None)
+        Self::compact_with_retentions(base_dir, active_file_id, keydir, config, None, None)
     }
 
     /// Merges older sealed segments with optional dynamic per-stream retention policy overrides.
@@ -59,6 +60,7 @@ impl LogCompactor {
         keydir: &KeyDir,
         config: &AeroLogConfig,
         custom_retentions: Option<&HashMap<String, RetentionPolicy>>,
+        stop_flag: Option<&AtomicBool>,
     ) -> Result<CompactionStats> {
         if active_file_id <= 1 {
             return Ok(CompactionStats::default());
@@ -135,6 +137,13 @@ impl LogCompactor {
         let mut stream_counts: HashMap<String, u64> = HashMap::new();
 
         for &file_id in &sealed_files {
+            if let Some(stop) = stop_flag {
+                if stop.load(Ordering::Relaxed) {
+                    let _ = std::fs::remove_dir_all(&staging_dir);
+                    return Ok(CompactionStats::default());
+                }
+            }
+
             let _ = reader.scan_segment_streaming(file_id, |offset, record| {
                 match record.header.record_type {
                     RecordType::Put => {
@@ -237,7 +246,7 @@ impl LogCompactor {
         let _ = std::fs::remove_dir_all(&staging_dir);
 
         for ((col, key), ptr) in updated_pointers {
-            keydir.put(&col, &key, ptr);
+            keydir.update_compacted_pointer(&col, &key, ptr);
         }
         for ((col, key), hlc) in purged_tombstones {
             keydir.remove_tombstone(&col, &key, hlc);

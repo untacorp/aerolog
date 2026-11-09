@@ -154,3 +154,73 @@ fn test_uniffi_snake_case_sync_mode() {
         Some(b"v".to_vec())
     );
 }
+
+#[test]
+fn test_uniffi_scan_mutations_structured_fields() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().to_str().unwrap().to_string();
+    let db = FfiAeroLogDb::open(path, 0x1111).unwrap();
+
+    // 1. Put KV entry
+    db.put(
+        "users".to_string(),
+        "alice".to_string(),
+        b"profile_data".to_vec(),
+    )
+    .unwrap();
+
+    // 2. Append Stream entry
+    let stream = db.get_stream("chat_general".to_string()).unwrap();
+    let stream_entry = stream.append(b"hello world".to_vec()).unwrap();
+    assert_eq!(stream_entry.sequence, 0);
+
+    // 3. Scan mutations
+    let mutations = db.scan_mutations_since(None, None, None, 10).unwrap();
+    assert_eq!(mutations.len(), 2);
+
+    // Verify KV mutation
+    let kv_mut = &mutations[0];
+    assert_eq!(kv_mut.collection, "users");
+    assert_eq!(kv_mut.key, "alice");
+    assert_eq!(kv_mut.sequence, None);
+    assert_eq!(kv_mut.payload, b"profile_data");
+
+    // Verify Stream mutation
+    let stream_mut = &mutations[1];
+    assert_eq!(stream_mut.collection, "stream");
+    assert_eq!(stream_mut.key, "chat_general");
+    assert_eq!(stream_mut.sequence, Some(0));
+    assert_eq!(stream_mut.payload, b"hello world");
+}
+
+#[test]
+fn test_uniffi_scan_mutations_default_counters() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().to_str().unwrap().to_string();
+    let db = FfiAeroLogDb::open(path, 0x2222).unwrap();
+
+    db.put_with_hlc(
+        "col".to_string(),
+        "k1".to_string(),
+        b"v1".to_vec(),
+        1000,
+        5,
+        0x2222,
+    )
+    .unwrap();
+    db.put_with_hlc(
+        "col".to_string(),
+        "k2".to_string(),
+        b"v2".to_vec(),
+        2000,
+        1,
+        0x2222,
+    )
+    .unwrap();
+
+    // Querying with only since_physical_time should default logical_counter and node_hash to 0
+    let muts = db.scan_mutations_since(Some(1500), None, None, 10).unwrap();
+    assert_eq!(muts.len(), 1);
+    assert_eq!(muts[0].key, "k2");
+    assert_eq!(muts[0].physical_time, 2000);
+}

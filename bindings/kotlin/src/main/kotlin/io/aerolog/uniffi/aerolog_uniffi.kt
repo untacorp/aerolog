@@ -2336,7 +2336,11 @@ public object FfiConverterTypeFfiKeyValuePair: FfiConverterRustBuffer<FfiKeyValu
  * UniFFI-compatible representation of a replicated mutation record for distributed sync.
  */
 data class FfiMutationRecord (
+    var `collection`: kotlin.String
+    , 
     var `key`: kotlin.String
+    , 
+    var `sequence`: kotlin.ULong?
     , 
     var `recordType`: kotlin.UByte
     , 
@@ -2366,6 +2370,8 @@ public object FfiConverterTypeFfiMutationRecord: FfiConverterRustBuffer<FfiMutat
     override fun read(buf: ByteBuffer): FfiMutationRecord {
         return FfiMutationRecord(
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalULong.read(buf),
             FfiConverterUByte.read(buf),
             FfiConverterULong.read(buf),
             FfiConverterUShort.read(buf),
@@ -2376,7 +2382,9 @@ public object FfiConverterTypeFfiMutationRecord: FfiConverterRustBuffer<FfiMutat
     }
 
     override fun allocationSize(value: FfiMutationRecord) = (
+            FfiConverterString.allocationSize(value.`collection`) +
             FfiConverterString.allocationSize(value.`key`) +
+            FfiConverterOptionalULong.allocationSize(value.`sequence`) +
             FfiConverterUByte.allocationSize(value.`recordType`) +
             FfiConverterULong.allocationSize(value.`physicalTime`) +
             FfiConverterUShort.allocationSize(value.`logicalCounter`) +
@@ -2386,7 +2394,9 @@ public object FfiConverterTypeFfiMutationRecord: FfiConverterRustBuffer<FfiMutat
     )
 
     override fun write(value: FfiMutationRecord, buf: ByteBuffer) {
+            FfiConverterString.write(value.`collection`, buf)
             FfiConverterString.write(value.`key`, buf)
+            FfiConverterOptionalULong.write(value.`sequence`, buf)
             FfiConverterUByte.write(value.`recordType`, buf)
             FfiConverterULong.write(value.`physicalTime`, buf)
             FfiConverterUShort.write(value.`logicalCounter`, buf)

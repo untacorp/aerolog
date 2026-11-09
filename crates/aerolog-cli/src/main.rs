@@ -14,7 +14,8 @@
 
 use aerolog_core::log::reader::LogReader;
 use aerolog_core::log::segment::SegmentFile;
-use aerolog_core::{AeroLogConfig, AeroLogDb, SyncMode};
+use aerolog_core::recovery::RecoveryManager;
+use aerolog_core::{AeroLogConfig, AeroLogDb, AeroLogError, RecordType, StreamEntry, SyncMode};
 use clap::{Parser, Subcommand};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -126,45 +127,72 @@ fn main() {
         }) => {
             let db = open_db(&cli.db);
             let ret = execute_put(&db, &collection, &key, value.as_bytes());
-            let _ = db.close();
-            ret
+            if let Err(err) = db.close() {
+                eprintln!("Error closing database: {err}");
+                false
+            } else {
+                ret
+            }
         }
         Some(Commands::Get { collection, key }) => {
             let db = open_db(&cli.db);
             let ret = execute_get(&db, &collection, &key, true);
-            let _ = db.close();
-            ret
+            if let Err(err) = db.close() {
+                eprintln!("Error closing database: {err}");
+                false
+            } else {
+                ret
+            }
         }
         Some(Commands::Delete { collection, key }) => {
             let db = open_db(&cli.db);
             let ret = execute_delete(&db, &collection, &key);
-            let _ = db.close();
-            ret
+            if let Err(err) = db.close() {
+                eprintln!("Error closing database: {err}");
+                false
+            } else {
+                ret
+            }
         }
         Some(Commands::Scan { collection }) => {
             let db = open_db(&cli.db);
             let ret = execute_scan(&db, &collection);
-            let _ = db.close();
-            ret
+            if let Err(err) = db.close() {
+                eprintln!("Error closing database: {err}");
+                false
+            } else {
+                ret
+            }
         }
         Some(Commands::Stream { command }) => {
             let db = open_db(&cli.db);
             let ret = handle_stream_command(&db, command);
-            let _ = db.close();
-            ret
+            if let Err(err) = db.close() {
+                eprintln!("Error closing database: {err}");
+                false
+            } else {
+                ret
+            }
         }
         Some(Commands::Compact) => {
             let db = open_db(&cli.db);
             let ret = execute_compact(&db);
-            let _ = db.close();
-            ret
+            if let Err(err) = db.close() {
+                eprintln!("Error closing database: {err}");
+                false
+            } else {
+                ret
+            }
         }
         Some(Commands::Inspect) => inspect_database(&cli.db),
         Some(Commands::Dump) => dump_database(&cli.db),
-        Some(Commands::Repl) | None => {
-            run_repl(&cli.db);
-            true
-        }
+        Some(Commands::Repl) | None => match run_repl(&cli.db) {
+            Ok(()) => true,
+            Err(err) => {
+                eprintln!("Error in REPL: {err}");
+                false
+            }
+        },
     };
 
     if !ok {
@@ -236,7 +264,13 @@ fn execute_scan(db: &AeroLogDb, collection: &str) -> bool {
         Ok(pairs) => {
             println!("Collection: {collection} ({} items)", pairs.len());
             for (k, v) in pairs {
-                let text = String::from_utf8_lossy(&v);
+                let text = match std::str::from_utf8(&v) {
+                    Ok(s) => s.to_string(),
+                    Err(_) => {
+                        let hex: String = v.iter().map(|b| format!("{b:02X}")).collect();
+                        format!("<binary {} bytes: {}>", v.len(), hex)
+                    }
+                };
                 println!("  {k} => {text}");
             }
             true
@@ -254,7 +288,7 @@ fn execute_compact(db: &AeroLogDb) -> bool {
         Ok(stats) => {
             let before_mb = stats.bytes_before as f64 / (1024.0 * 1024.0);
             let after_mb = stats.bytes_after as f64 / (1024.0 * 1024.0);
-            let saved_pct = if stats.bytes_before > 0 {
+            let saved_pct = if stats.bytes_before > 0 && stats.bytes_before >= stats.bytes_after {
                 (stats.bytes_before - stats.bytes_after) as f64 / stats.bytes_before as f64 * 100.0
             } else {
                 0.0
@@ -395,15 +429,58 @@ fn dump_database(path: &Path) -> bool {
 
     for id in segment_ids {
         println!("=== Segment data-{id:06}.aerolog ===");
-        let _ = reader.scan_segment_streaming(id, |offset, record| {
-            let key_str = String::from_utf8_lossy(&record.key);
-            let val_str = String::from_utf8_lossy(&record.value);
-            println!(
-                "  @0x{offset:08X} [{:?}] key={key_str} val={val_str} hlc={}",
-                record.header.record_type, record.header.hlc
-            );
+        let res = reader.scan_segment_streaming(id, |offset, record| {
+            match record.header.record_type {
+                RecordType::StreamEntry => {
+                    let stream_id = String::from_utf8_lossy(&record.key);
+                    if let Ok((seq, payload)) = StreamEntry::unpack_payload(&record.value) {
+                        let val_str = match std::str::from_utf8(&payload) {
+                            Ok(s) => s.to_string(),
+                            Err(_) => {
+                                let hex: String =
+                                    payload.iter().map(|b| format!("{b:02X}")).collect();
+                                format!("<binary {} bytes: {}>", payload.len(), hex)
+                            }
+                        };
+                        println!(
+                            "  @0x{offset:08X} [StreamEntry] stream={stream_id} seq={seq} val={val_str} hlc={}",
+                            record.header.hlc
+                        );
+                    } else {
+                        let raw_val = String::from_utf8_lossy(&record.value);
+                        println!(
+                            "  @0x{offset:08X} [StreamEntry:Corrupted] stream={stream_id} raw={raw_val} hlc={}",
+                            record.header.hlc
+                        );
+                    }
+                }
+                RecordType::Put | RecordType::Delete => {
+                    let composite = String::from_utf8_lossy(&record.key);
+                    let (col, key) = RecoveryManager::split_composite_key(&composite);
+                    let val_str = if record.header.record_type == RecordType::Delete {
+                        "(tombstone)".to_string()
+                    } else {
+                        match std::str::from_utf8(&record.value) {
+                            Ok(s) => s.to_string(),
+                            Err(_) => {
+                                let hex: String =
+                                    record.value.iter().map(|b| format!("{b:02X}")).collect();
+                                format!("<binary {} bytes: {}>", record.value.len(), hex)
+                            }
+                        }
+                    };
+                    println!(
+                        "  @0x{offset:08X} [{:?}] col={col} key={key} val={val_str} hlc={}",
+                        record.header.record_type, record.header.hlc
+                    );
+                }
+            }
             Ok(true)
         });
+        if let Err(err) = res {
+            eprintln!("Error reading segment data-{id:06}.aerolog: {err}");
+            return false;
+        }
     }
     true
 }
@@ -427,7 +504,7 @@ fn fourth_token_offset(s: &str) -> usize {
     s.len()
 }
 
-fn run_repl(db_path: &Path) {
+fn run_repl(db_path: &Path) -> Result<(), AeroLogError> {
     println!("==================================================================");
     println!("             AeroLog Interactive Shell (REPL)                     ");
     println!("==================================================================");
@@ -444,7 +521,10 @@ fn run_repl(db_path: &Path) {
 
         let mut line = String::new();
         if stdin.read_line(&mut line).is_err() || line.is_empty() {
-            break;
+            println!("\nClosing database...");
+            db.close()?;
+            println!("Goodbye.");
+            return Ok(());
         }
 
         let trimmed = line.trim();
@@ -458,9 +538,9 @@ fn run_repl(db_path: &Path) {
         match cmd.as_str() {
             "EXIT" | "QUIT" => {
                 println!("Closing database...");
-                let _ = db.close();
+                db.close()?;
                 println!("Goodbye.");
-                break;
+                return Ok(());
             }
             "HELP" => {
                 println!("Supported Commands:");
@@ -473,6 +553,7 @@ fn run_repl(db_path: &Path) {
                 println!("  STREAM INFO <id>                  Display stream event count");
                 println!("  COMPACT                           Reclaim space and merge segments");
                 println!("  INSPECT                           View segment files and disk size");
+                println!("  DUMP                              Dump decoded records from disk");
                 println!("  EXIT / QUIT                       Exit the shell");
             }
             "PUT" => {
@@ -548,7 +629,12 @@ fn run_repl(db_path: &Path) {
                 execute_compact(&db);
             }
             "INSPECT" => {
+                let _ = db.flush();
                 inspect_database(db_path);
+            }
+            "DUMP" => {
+                let _ = db.flush();
+                dump_database(db_path);
             }
             unknown => {
                 println!(

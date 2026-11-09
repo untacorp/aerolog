@@ -18,7 +18,10 @@
 
 uniffi::setup_scaffolding!();
 
-use aerolog_core::{AeroLogConfig, AeroLogDb, AeroLogStream, HlcTimestamp, SyncMode};
+use aerolog_core::recovery::RecoveryManager;
+use aerolog_core::{
+    AeroLogConfig, AeroLogDb, AeroLogStream, HlcTimestamp, RecordType, StreamEntry, SyncMode,
+};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -58,7 +61,9 @@ pub struct FfiKeyValuePair {
 /// UniFFI-compatible representation of a replicated mutation record for distributed sync.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiMutationRecord {
+    pub collection: String,
     pub key: String,
+    pub sequence: Option<u64>,
     pub record_type: u8,
     pub physical_time: u64,
     pub logical_counter: u16,
@@ -275,25 +280,46 @@ impl FfiAeroLogDb {
         since_node_hash: Option<u64>,
         limit: u32,
     ) -> Result<Vec<FfiMutationRecord>, AeroLogFfiError> {
-        let since_hlc = match (since_physical_time, since_logical_counter, since_node_hash) {
-            (Some(pt), Some(lc), Some(nh)) => Some(HlcTimestamp::new(pt, lc, nh)),
-            _ => None,
-        };
+        let since_hlc = since_physical_time.map(|pt| {
+            HlcTimestamp::new(
+                pt,
+                since_logical_counter.unwrap_or(0),
+                since_node_hash.unwrap_or(0),
+            )
+        });
 
         let records = self.inner.scan_mutations_since(since_hlc, limit as usize)?;
 
-        Ok(records
-            .into_iter()
-            .map(|r| FfiMutationRecord {
-                key: String::from_utf8_lossy(&r.key).to_string(),
-                record_type: r.header.record_type as u8,
+        let mut results = Vec::with_capacity(records.len());
+        for r in records {
+            let record_type_u8 = r.header.record_type as u8;
+            let (collection, key, sequence, payload) = match r.header.record_type {
+                RecordType::Put | RecordType::Delete => {
+                    let key_str = String::from_utf8_lossy(&r.key);
+                    let (col, k) = RecoveryManager::split_composite_key(&key_str);
+                    (col, k, None, r.value)
+                }
+                RecordType::StreamEntry => {
+                    let stream_id = String::from_utf8_lossy(&r.key).to_string();
+                    let (seq, user_bytes) = StreamEntry::unpack_payload(&r.value)?;
+                    ("stream".to_string(), stream_id, Some(seq), user_bytes)
+                }
+            };
+
+            results.push(FfiMutationRecord {
+                collection,
+                key,
+                sequence,
+                record_type: record_type_u8,
                 physical_time: r.header.hlc.physical_time,
                 logical_counter: r.header.hlc.logical_counter,
                 node_id_hash: r.header.hlc.node_id_hash,
                 hlc_string: r.header.hlc.to_string(),
-                payload: r.value,
-            })
-            .collect())
+                payload,
+            });
+        }
+
+        Ok(results)
     }
 
     /// Performs background compaction to reclaim disk space.

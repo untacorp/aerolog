@@ -80,6 +80,41 @@ impl SparseStreamIndex {
         seq
     }
 
+    /// Records a recovered stream entry during startup recovery or post-compaction rebuild.
+    ///
+    /// When first encountering the stream (`meta.total_entries == 0`), this method initializes
+    /// `meta.base_sequence = seq` to preserve true stream sequence bounds.
+    pub fn record_recovered_entry(
+        &self,
+        stream_id: &str,
+        seq: u64,
+        hlc: HlcTimestamp,
+        pointer: RecordPointer,
+    ) {
+        let mut lock = self.streams.write();
+        let interval = self.checkpoint_interval as u64;
+        let meta = lock.entry(stream_id.to_string()).or_default();
+
+        if meta.total_entries == 0 {
+            meta.base_sequence = seq;
+        }
+        if seq >= meta.total_entries {
+            meta.total_entries = seq + 1;
+        }
+        meta.latest_hlc = Some(hlc);
+        meta.latest_pointer = Some(pointer);
+
+        if seq.is_multiple_of(interval) {
+            let cp = StreamCheckpoint {
+                sequence: seq,
+                hlc,
+                file_id: pointer.file_id,
+                offset: pointer.offset,
+            };
+            meta.checkpoints.insert(seq, cp);
+        }
+    }
+
     /// Records a stream entry at an explicit sequence number (used during post-compaction rebuild).
     pub fn record_entry_with_seq(
         &self,
@@ -217,5 +252,26 @@ mod tests {
 
         let cp = index.find_checkpoint_before("chat-room-1", 15).unwrap();
         assert_eq!(cp.sequence, 10);
+    }
+
+    #[test]
+    fn test_record_recovered_entry_preserves_base_sequence() {
+        let index = SparseStreamIndex::new(10);
+        let hlc = HlcTimestamp::new(2000, 0, 1);
+
+        // Simulate recovering stream entries starting from sequence 400 up to 425
+        for seq in 400..425 {
+            let ptr = RecordPointer::new(2, (seq - 400) * 100, 100, hlc, false);
+            index.record_recovered_entry("telemetry-stream", seq, hlc, ptr);
+        }
+
+        let meta = index.get_metadata("telemetry-stream").unwrap();
+        assert_eq!(meta.base_sequence, 400);
+        assert_eq!(meta.total_entries, 425);
+        assert_eq!(index.base_sequence("telemetry-stream"), 400);
+        assert_eq!(index.total_entries("telemetry-stream"), 425);
+        assert!(meta.checkpoints.contains_key(&400));
+        assert!(meta.checkpoints.contains_key(&410));
+        assert!(meta.checkpoints.contains_key(&420));
     }
 }

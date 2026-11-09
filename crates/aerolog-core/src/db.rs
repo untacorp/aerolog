@@ -25,7 +25,7 @@ use crate::log::writer::LogWriter;
 use crate::record::{Record, RecordType};
 use crate::recovery::RecoveryManager;
 use crate::stream::{AeroLogStream, StreamEntry};
-use parking_lot::Mutex;
+use parking_lot::{Condvar, Mutex};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -50,6 +50,8 @@ struct InnerDb {
     compaction_lock: Mutex<()>,
     stream_retentions: parking_lot::RwLock<HashMap<String, RetentionPolicy>>,
     background_worker_stop: Arc<AtomicBool>,
+    compactor_worker: Mutex<Option<std::thread::JoinHandle<()>>>,
+    compactor_condvar: Arc<Condvar>,
 }
 
 impl AeroLogDb {
@@ -77,6 +79,8 @@ impl AeroLogDb {
 
         let stream_retentions = parking_lot::RwLock::new(config.stream_retention_overrides.clone());
         let background_worker_stop = Arc::new(AtomicBool::new(false));
+        let compactor_worker = Mutex::new(None);
+        let compactor_condvar = Arc::new(Condvar::new());
         let auto_compact_interval = config.compaction_interval;
 
         let inner = Arc::new(InnerDb {
@@ -91,6 +95,8 @@ impl AeroLogDb {
             compaction_lock: Mutex::new(()),
             stream_retentions,
             background_worker_stop,
+            compactor_worker,
+            compactor_condvar,
         });
 
         let db = Self { inner };
@@ -120,6 +126,11 @@ impl AeroLogDb {
         remote_hlc: HlcTimestamp,
     ) -> Result<bool> {
         self.check_open()?;
+        if let Some(existing) = self.inner.keydir.get_raw(collection, key) {
+            if existing.hlc >= remote_hlc {
+                return Ok(false);
+            }
+        }
         self.inner.hlc_gen.update(remote_hlc);
         self.put_internal(collection, key, value, remote_hlc)
     }
@@ -131,6 +142,19 @@ impl AeroLogDb {
         value: Vec<u8>,
         hlc: HlcTimestamp,
     ) -> Result<bool> {
+        if let Some(existing) = self.inner.keydir.get_raw(collection, key) {
+            if existing.hlc >= hlc {
+                return Ok(false);
+            }
+        }
+
+        let mut writer = self.inner.writer.lock();
+        if let Some(existing) = self.inner.keydir.get_raw(collection, key) {
+            if existing.hlc >= hlc {
+                return Ok(false);
+            }
+        }
+
         let composite_key = RecoveryManager::make_composite_key(collection, key);
         let record = Record::new(
             RecordType::Put,
@@ -139,7 +163,6 @@ impl AeroLogDb {
             value,
         )?;
 
-        let mut writer = self.inner.writer.lock();
         let (file_id, offset, len) = writer.append(&record)?;
         let ptr = RecordPointer::new(file_id, offset, len, hlc, false);
 
@@ -207,11 +230,29 @@ impl AeroLogDb {
         remote_hlc: HlcTimestamp,
     ) -> Result<bool> {
         self.check_open()?;
+        if let Some(existing) = self.inner.keydir.get_raw(collection, key) {
+            if existing.hlc >= remote_hlc {
+                return Ok(false);
+            }
+        }
         self.inner.hlc_gen.update(remote_hlc);
         self.delete_internal(collection, key, remote_hlc)
     }
 
     fn delete_internal(&self, collection: &str, key: &str, hlc: HlcTimestamp) -> Result<bool> {
+        if let Some(existing) = self.inner.keydir.get_raw(collection, key) {
+            if existing.hlc >= hlc {
+                return Ok(false);
+            }
+        }
+
+        let mut writer = self.inner.writer.lock();
+        if let Some(existing) = self.inner.keydir.get_raw(collection, key) {
+            if existing.hlc >= hlc {
+                return Ok(false);
+            }
+        }
+
         let composite_key = RecoveryManager::make_composite_key(collection, key);
         let record = Record::new(
             RecordType::Delete,
@@ -220,7 +261,6 @@ impl AeroLogDb {
             Vec::new(),
         )?;
 
-        let mut writer = self.inner.writer.lock();
         let (file_id, offset, len) = writer.append(&record)?;
         let ptr = RecordPointer::new(file_id, offset, len, hlc, true);
 
@@ -254,11 +294,29 @@ impl AeroLogDb {
     /// Scans and returns all live key-value pairs within a collection.
     pub fn scan_collection(&self, collection: &str) -> Result<Vec<(String, Vec<u8>)>> {
         self.check_open()?;
+        let (active_file_id, mut flushed_offset) = {
+            let mut writer = self.inner.writer.lock();
+            writer.flush()?;
+            (writer.active_file_id(), writer.current_offset())
+        };
+
         let keys = self.inner.keydir.keys_in_collection(collection);
         let mut results = Vec::with_capacity(keys.len());
 
         for key in keys {
-            if let Some(val) = self.get(collection, &key)? {
+            if let Some(ptr) = self.inner.keydir.get(collection, &key) {
+                if ptr.file_id > active_file_id
+                    || (ptr.file_id == active_file_id
+                        && ptr.offset + ptr.length as u64 > flushed_offset)
+                {
+                    let mut writer = self.inner.writer.lock();
+                    writer.flush()?;
+                    flushed_offset = writer.current_offset();
+                }
+                let val = self
+                    .inner
+                    .reader
+                    .read_value(ptr.file_id, ptr.offset, ptr.length)?;
                 results.push((key, val));
             }
         }
@@ -333,6 +391,7 @@ impl AeroLogDb {
             &self.inner.keydir,
             &self.inner.config,
             Some(&retentions),
+            Some(&self.inner.background_worker_stop),
         )?;
         drop(retentions);
 
@@ -345,19 +404,15 @@ impl AeroLogDb {
     fn rebuild_sparse_index(&self, stream_evictions: &HashMap<String, u64>) -> Result<()> {
         let active_file_id = self.inner.writer.lock().active_file_id();
 
-        let mut stream_states: HashMap<String, (u64, u64)> = HashMap::new();
         for stream_id in self.inner.sparse_index.stream_ids() {
             let base = self.inner.sparse_index.base_sequence(&stream_id);
             let total = self.inner.sparse_index.total_entries(&stream_id);
             let evicted = stream_evictions.get(&stream_id).copied().unwrap_or(0);
             let new_base = base + evicted;
-            stream_states.insert(stream_id.clone(), (new_base, total));
             self.inner
                 .sparse_index
                 .reset_stream_checkpoints(&stream_id, new_base, total);
         }
-
-        let mut current_seqs: HashMap<String, u64> = HashMap::new();
 
         for file_id in 1..=active_file_id {
             let seg_path = self
@@ -382,22 +437,13 @@ impl AeroLogDb {
                             false,
                         );
 
-                        let (base_seq, _) =
-                            stream_states.entry(stream_id.clone()).or_insert_with(|| {
-                                let b = self.inner.sparse_index.base_sequence(&stream_id);
-                                (b, b)
-                            });
-                        let current_seq =
-                            current_seqs.entry(stream_id.clone()).or_insert(*base_seq);
-                        let is_first = *current_seq == *base_seq;
-                        self.inner.sparse_index.record_entry_with_seq(
+                        let seq = StreamEntry::peek_sequence(&record.value)?;
+                        self.inner.sparse_index.record_recovered_entry(
                             &stream_id,
-                            *current_seq,
+                            seq,
                             record.header.hlc,
                             ptr,
-                            is_first,
                         );
-                        *current_seq += 1;
                     }
                     Ok(true)
                 })?;
@@ -408,37 +454,43 @@ impl AeroLogDb {
     /// Starts an optional background compaction worker running at the given interval.
     pub fn start_background_compactor(&self, interval: std::time::Duration) -> Result<()> {
         self.check_open()?;
+        let mut worker_guard = self.inner.compactor_worker.lock();
+        if worker_guard.is_some() {
+            return Ok(());
+        }
+
         self.inner
             .background_worker_stop
             .store(false, Ordering::SeqCst);
-        let db_clone = self.clone();
+        let weak_inner = Arc::downgrade(&self.inner);
         let stop_flag = self.inner.background_worker_stop.clone();
+        let condvar = self.inner.compactor_condvar.clone();
 
-        std::thread::Builder::new()
+        let handle = std::thread::Builder::new()
             .name("aerolog-compactor".to_string())
             .spawn(move || {
-                let tick = std::time::Duration::from_millis(100);
-                let total_ticks = (interval.as_millis() / 100).max(1) as u64;
-                let mut current_tick = 0u64;
+                let wait_mutex = parking_lot::Mutex::new(());
+                while !stop_flag.load(Ordering::Relaxed) {
+                    let mut guard = wait_mutex.lock();
+                    condvar.wait_for(&mut guard, interval);
 
-                while !stop_flag.load(Ordering::Relaxed)
-                    && !db_clone.inner.is_closed.load(Ordering::Relaxed)
-                {
-                    std::thread::sleep(tick);
-                    current_tick += 1;
-                    if current_tick >= total_ticks {
-                        current_tick = 0;
-                        if stop_flag.load(Ordering::Relaxed)
-                            || db_clone.inner.is_closed.load(Ordering::Relaxed)
-                        {
-                            break;
-                        }
-                        let _ = db_clone.compact();
+                    if stop_flag.load(Ordering::Relaxed) {
+                        break;
                     }
+
+                    let Some(inner) = weak_inner.upgrade() else {
+                        break;
+                    };
+                    if stop_flag.load(Ordering::Relaxed) || inner.is_closed.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let db = AeroLogDb { inner };
+                    let _ = db.compact();
                 }
             })
             .map_err(AeroLogError::Io)?;
 
+        *worker_guard = Some(handle);
         Ok(())
     }
 
@@ -447,6 +499,7 @@ impl AeroLogDb {
         self.inner
             .background_worker_stop
             .store(true, Ordering::SeqCst);
+        self.inner.compactor_condvar.notify_all();
     }
 
     /// Flushes all pending in-memory buffer writes to disk.
@@ -464,6 +517,10 @@ impl AeroLogDb {
     /// Closes the database instance.
     pub fn close(&self) -> Result<()> {
         self.stop_background_compactor();
+        let worker_handle = self.inner.compactor_worker.lock().take();
+        if let Some(handle) = worker_handle {
+            let _ = handle.join();
+        }
         if !self.inner.is_closed.swap(true, Ordering::SeqCst) {
             let mut writer = self.inner.writer.lock();
             writer.sync_all()?;
@@ -480,9 +537,10 @@ impl AeroLogDb {
     }
 }
 
-impl Drop for AeroLogDb {
+impl Drop for InnerDb {
     fn drop(&mut self) {
-        self.stop_background_compactor();
+        self.background_worker_stop.store(true, Ordering::SeqCst);
+        self.compactor_condvar.notify_all();
     }
 }
 
@@ -496,14 +554,17 @@ impl AeroLogStream for StreamHandle {
     fn append(&self, payload: Vec<u8>) -> Result<(u64, HlcTimestamp)> {
         self.db.check_open()?;
         let hlc = self.db.inner.hlc_gen.now();
+
+        let mut writer = self.db.inner.writer.lock();
+        let next_seq = self.db.inner.sparse_index.total_entries(&self.stream_id);
+        let wire_payload = StreamEntry::pack_payload(next_seq, &payload);
         let record = Record::new(
             RecordType::StreamEntry,
             hlc,
             self.stream_id.as_bytes().to_vec(),
-            payload,
+            wire_payload,
         )?;
 
-        let mut writer = self.db.inner.writer.lock();
         let (file_id, offset, len) = writer.append(&record)?;
         let ptr = RecordPointer::new(file_id, offset, len, hlc, false);
 
@@ -533,14 +594,13 @@ impl AeroLogStream for StreamHandle {
 
         let base_seq = self.db.inner.sparse_index.base_sequence(&self.stream_id);
         let start_seq = total_entries.saturating_sub(limit as u64).max(base_seq);
-        let (scan_file_id, scan_offset, checkpoint_seq) = match checkpoint {
-            Some(cp) => (cp.file_id, cp.offset, cp.sequence),
-            None => (1, 0, base_seq),
+        let (scan_file_id, scan_offset) = match checkpoint {
+            Some(cp) => (cp.file_id, cp.offset),
+            None => (1, 0),
         };
 
         let active_file_id = self.db.inner.writer.lock().active_file_id();
         let mut entries = Vec::with_capacity(limit);
-        let mut current_seq = checkpoint_seq;
         let stream_bytes = self.stream_id.as_bytes();
 
         for fid in scan_file_id..=active_file_id {
@@ -563,14 +623,14 @@ impl AeroLogStream for StreamHandle {
                     if record.header.record_type == RecordType::StreamEntry
                         && record.key == stream_bytes
                     {
-                        if current_seq >= start_seq {
+                        let (seq, payload) = StreamEntry::unpack_payload(&record.value)?;
+                        if seq >= start_seq {
                             entries.push(StreamEntry {
-                                sequence: current_seq,
+                                sequence: seq,
                                 hlc: record.header.hlc,
-                                payload: record.value,
+                                payload,
                             });
                         }
-                        current_seq += 1;
                         if entries.len() >= limit {
                             limit_reached = true;
                             return Ok(false);

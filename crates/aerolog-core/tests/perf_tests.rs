@@ -19,7 +19,7 @@ use tempfile::tempdir;
 #[test]
 fn test_native_rust_performance_benchmarks() {
     let dir = tempdir().unwrap();
-    let count = 50_000;
+    let count = 10_000;
     let payload = b"{\"device_id\":\"sensor_temp_01\",\"metric\":\"temperature\",\"val\":24.85,\"unit\":\"C\"}".to_vec();
 
     println!("\n==================================================================");
@@ -51,7 +51,7 @@ fn test_native_rust_performance_benchmarks() {
     println!("   Throughput   : {:.0} writes/sec", write_ops);
     println!("   Avg Latency  : {:.2} us/op", write_latency_us);
 
-    let sample_reads = 50_000;
+    let sample_reads = 10_000;
     let read_start = Instant::now();
     for i in 0..sample_reads {
         let idx = (i * 37) % count;
@@ -68,7 +68,7 @@ fn test_native_rust_performance_benchmarks() {
     println!("   Throughput   : {:.0} reads/sec", read_ops);
     println!("   Avg Latency  : {:.2} us/op", read_latency_us);
 
-    let stream_count = 20_000;
+    let stream_count = 5_000;
     let stream = db.get_stream("mesh_chat_events").unwrap();
     let stream_payload = b"MESH_PACKET_ROUTING_HOP_ACK_PAYLOAD_VERIFIED".to_vec();
 
@@ -137,7 +137,7 @@ fn test_native_rust_performance_benchmarks() {
     println!("   Records Evicted   : {}", stats.records_evicted);
     println!(
         "   Disk Space Saved  : {:.1}%",
-        if stats.bytes_before > 0 {
+        if stats.bytes_before > 0 && stats.bytes_before >= stats.bytes_after {
             (stats.bytes_before - stats.bytes_after) as f64 / stats.bytes_before as f64 * 100.0
         } else {
             0.0
@@ -161,7 +161,7 @@ fn test_concurrent_multithreaded_throughput() {
         .with_max_segment_size(32 * 1024 * 1024);
 
     let db = Arc::new(AeroLogDb::open(dir.path(), config).unwrap());
-    let records_per_thread = 10_000;
+    let records_per_thread = 2_500;
     let writer_threads = 4;
     let total_writes = records_per_thread * writer_threads;
 

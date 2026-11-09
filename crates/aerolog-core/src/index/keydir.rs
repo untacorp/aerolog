@@ -62,7 +62,7 @@ impl KeyDir {
     pub fn put(&self, collection: &str, key: &str, new_ptr: RecordPointer) -> bool {
         let mut lock = self.entries.write();
         if let Some(col_map) = lock.get_mut(collection) {
-            if col_map.get(key).is_some_and(|e| e.hlc > new_ptr.hlc) {
+            if col_map.get(key).is_some_and(|e| e.hlc >= new_ptr.hlc) {
                 return false;
             }
             col_map.insert(key.to_string(), new_ptr);
@@ -73,6 +73,28 @@ impl KeyDir {
         col_map.insert(key.to_string(), new_ptr);
         lock.insert(collection.to_string(), col_map);
         true
+    }
+
+    /// Updates a record pointer relocated by log compaction.
+    ///
+    /// Preserves LWW semantics by updating only if the entry in KeyDir still has the exact
+    /// same HLC as the compacted record (i.e. no newer write has superseded it concurrently).
+    pub fn update_compacted_pointer(
+        &self,
+        collection: &str,
+        key: &str,
+        new_ptr: RecordPointer,
+    ) -> bool {
+        let mut lock = self.entries.write();
+        if let Some(col_map) = lock.get_mut(collection) {
+            if let Some(existing) = col_map.get_mut(key) {
+                if existing.hlc == new_ptr.hlc {
+                    *existing = new_ptr;
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Removes an entry from KeyDir unconditionally.
@@ -178,6 +200,24 @@ mod tests {
 
         assert!(!keydir.put("users", "alice", ptr1));
         assert_eq!(keydir.get("users", "alice").unwrap().offset, 100);
+
+        // Identical HLC write is rejected as duplicate
+        let ptr2_dup = RecordPointer::new(1, 200, 150, t2, false);
+        assert!(!keydir.put("users", "alice", ptr2_dup));
+        assert_eq!(keydir.get("users", "alice").unwrap().offset, 100);
+
+        // Compactor relocates pointer with identical HLC
+        let ptr2_compacted = RecordPointer::new(2, 50, 120, t2, false);
+        assert!(keydir.update_compacted_pointer("users", "alice", ptr2_compacted));
+        assert_eq!(keydir.get("users", "alice").unwrap().file_id, 2);
+        assert_eq!(keydir.get("users", "alice").unwrap().offset, 50);
+
+        // Compactor update rejected if key has advanced to newer HLC
+        let t3 = HlcTimestamp::new(1003, 0, 1);
+        let ptr3 = RecordPointer::new(3, 0, 120, t3, false);
+        assert!(keydir.put("users", "alice", ptr3));
+        assert!(!keydir.update_compacted_pointer("users", "alice", ptr2_compacted));
+        assert_eq!(keydir.get("users", "alice").unwrap().file_id, 3);
     }
 
     #[test]

@@ -1312,7 +1312,9 @@ public func FfiConverterTypeFfiKeyValuePair_lower(_ value: FfiKeyValuePair) -> R
  * UniFFI-compatible representation of a replicated mutation record for distributed sync.
  */
 public struct FfiMutationRecord: Equatable, Hashable {
+    public var collection: String
     public var key: String
+    public var sequence: UInt64?
     public var recordType: UInt8
     public var physicalTime: UInt64
     public var logicalCounter: UInt16
@@ -1322,8 +1324,10 @@ public struct FfiMutationRecord: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(key: String, recordType: UInt8, physicalTime: UInt64, logicalCounter: UInt16, nodeIdHash: UInt64, hlcString: String, payload: Data) {
+    public init(collection: String, key: String, sequence: UInt64?, recordType: UInt8, physicalTime: UInt64, logicalCounter: UInt16, nodeIdHash: UInt64, hlcString: String, payload: Data) {
+        self.collection = collection
         self.key = key
+        self.sequence = sequence
         self.recordType = recordType
         self.physicalTime = physicalTime
         self.logicalCounter = logicalCounter
@@ -1348,7 +1352,9 @@ public struct FfiConverterTypeFfiMutationRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMutationRecord {
         return
             try FfiMutationRecord(
+                collection: FfiConverterString.read(from: &buf), 
                 key: FfiConverterString.read(from: &buf), 
+                sequence: FfiConverterOptionUInt64.read(from: &buf), 
                 recordType: FfiConverterUInt8.read(from: &buf), 
                 physicalTime: FfiConverterUInt64.read(from: &buf), 
                 logicalCounter: FfiConverterUInt16.read(from: &buf), 
@@ -1359,7 +1365,9 @@ public struct FfiConverterTypeFfiMutationRecord: FfiConverterRustBuffer {
     }
 
     public static func write(_ value: FfiMutationRecord, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.collection, into: &buf)
         FfiConverterString.write(value.key, into: &buf)
+        FfiConverterOptionUInt64.write(value.sequence, into: &buf)
         FfiConverterUInt8.write(value.recordType, into: &buf)
         FfiConverterUInt64.write(value.physicalTime, into: &buf)
         FfiConverterUInt16.write(value.logicalCounter, into: &buf)

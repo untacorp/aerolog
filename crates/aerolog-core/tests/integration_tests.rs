@@ -451,3 +451,182 @@ fn test_torn_write_recovery_and_append_continuity() {
         db.close().unwrap();
     }
 }
+
+#[test]
+fn test_stream_sequence_monotonicity_across_reopen_after_compaction() {
+    let dir = tempdir().unwrap();
+    let config = AeroLogConfig::new(0xABC)
+        .with_sync_mode(SyncMode::SyncOnWrite)
+        .with_max_segment_size(250);
+
+    // Step 1: Append 50 stream entries across segments
+    {
+        let db = AeroLogDb::open(dir.path(), config.clone()).unwrap();
+        let stream = db
+            .get_stream_with_retention("audit", RetentionPolicy::MaxEntries(10))
+            .unwrap();
+
+        for i in 0..50 {
+            let (seq, _) = stream.append(format!("event_{i}").into_bytes()).unwrap();
+            assert_eq!(seq, i as u64);
+        }
+        assert_eq!(stream.total_entries(), 50);
+
+        // Step 2: Compact with MaxEntries(10)
+        let stats = db.compact().unwrap();
+        assert_eq!(stats.records_evicted, 40);
+
+        // Step 3: Close database
+        db.close().unwrap();
+    }
+
+    // Step 4: Reopen database and verify sequence numbers and total entries
+    {
+        let db = AeroLogDb::open(dir.path(), config).unwrap();
+        let stream = db
+            .get_stream_with_retention("audit", RetentionPolicy::MaxEntries(10))
+            .unwrap();
+
+        assert_eq!(stream.total_entries(), 50);
+
+        let recent = stream.read_recent(10).unwrap();
+        assert_eq!(recent.len(), 10);
+        for (idx, entry) in recent.iter().enumerate() {
+            let expected_seq = 40 + idx as u64;
+            assert_eq!(entry.sequence, expected_seq);
+            assert_eq!(entry.payload, format!("event_{expected_seq}").into_bytes());
+        }
+
+        let recent_5 = stream.read_recent(5).unwrap();
+        assert_eq!(recent_5.len(), 5);
+        for (idx, entry) in recent_5.iter().enumerate() {
+            let expected_seq = 45 + idx as u64;
+            assert_eq!(entry.sequence, expected_seq);
+        }
+
+        // Appending new entry continues strictly monotonically at 50
+        let (seq50, _) = stream.append(b"event_50".to_vec()).unwrap();
+        assert_eq!(seq50, 50);
+        assert_eq!(stream.total_entries(), 51);
+
+        db.close().unwrap();
+    }
+}
+
+#[test]
+fn test_compactor_lifecycle_independent_of_db_clone_drops() {
+    let dir = tempdir().unwrap();
+    let config = AeroLogConfig::new(0xCAFE)
+        .with_sync_mode(SyncMode::SyncOnWrite)
+        .with_max_segment_size(200);
+
+    let db = AeroLogDb::open(dir.path(), config).unwrap();
+    db.start_background_compactor(std::time::Duration::from_millis(50))
+        .unwrap();
+
+    // Clone db handle and immediately drop the clone
+    let db_clone = db.clone();
+    drop(db_clone);
+
+    // Append records across segment rolls to produce multiple sealed segments
+    for i in 0..40 {
+        db.put("metrics", &format!("k{i}"), b"val".to_vec())
+            .unwrap();
+    }
+
+    // Allow background compactor to trigger and merge inactive segments
+    std::thread::sleep(std::time::Duration::from_millis(250));
+
+    // The primary handle is still open, compactor is still running
+    db.close().unwrap();
+}
+
+#[test]
+fn test_stale_lww_write_rejection_avoids_disk_append() {
+    let dir = tempdir().unwrap();
+    let config = AeroLogConfig::new(0x777).with_sync_mode(SyncMode::SyncOnWrite);
+    let db = AeroLogDb::open(dir.path(), config).unwrap();
+
+    // Put key with HLC physical time 1000
+    let hlc1000 = HlcTimestamp::new(1000, 0, 0x111);
+    let accepted = db
+        .put_with_hlc("kv", "sensor", b"temp_25".to_vec(), hlc1000)
+        .unwrap();
+    assert!(accepted);
+
+    let active_seg_path = dir.path().join("data-000001.aerolog");
+    let size_before = std::fs::metadata(&active_seg_path).unwrap().len();
+
+    // Attempt stale write with HLC physical time 800
+    let hlc800 = HlcTimestamp::new(800, 0, 0x111);
+    let accepted_stale = db
+        .put_with_hlc("kv", "sensor", b"temp_20".to_vec(), hlc800)
+        .unwrap();
+    assert!(!accepted_stale);
+
+    // Verify active segment file size did not increase (disk write was avoided)
+    let size_after = std::fs::metadata(&active_seg_path).unwrap().len();
+    assert_eq!(size_before, size_after);
+
+    // Verify value was not updated
+    assert_eq!(db.get("kv", "sensor").unwrap().unwrap(), b"temp_25");
+
+    db.close().unwrap();
+}
+
+#[test]
+fn test_stale_lww_delete_rejection_avoids_disk_append() {
+    let dir = tempdir().unwrap();
+    let config = AeroLogConfig::new(0x778).with_sync_mode(SyncMode::SyncOnWrite);
+    let db = AeroLogDb::open(dir.path(), config).unwrap();
+
+    // Put key with HLC physical time 1000
+    let hlc1000 = HlcTimestamp::new(1000, 0, 0x111);
+    db.put_with_hlc("kv", "sensor", b"temp_25".to_vec(), hlc1000)
+        .unwrap();
+
+    let active_seg_path = dir.path().join("data-000001.aerolog");
+    let size_before = std::fs::metadata(&active_seg_path).unwrap().len();
+
+    // Attempt stale delete with HLC physical time 800
+    let hlc800 = HlcTimestamp::new(800, 0, 0x111);
+    let accepted_stale = db.delete_with_hlc("kv", "sensor", hlc800).unwrap();
+    assert!(!accepted_stale);
+
+    // Verify active segment file size did not increase (disk write was avoided)
+    let size_after = std::fs::metadata(&active_seg_path).unwrap().len();
+    assert_eq!(size_before, size_after);
+
+    // Verify value still exists
+    assert_eq!(db.get("kv", "sensor").unwrap().unwrap(), b"temp_25");
+
+    // Newer delete with HLC physical time 1200 is accepted and appends tombstone
+    let hlc1200 = HlcTimestamp::new(1200, 0, 0x111);
+    let accepted_newer = db.delete_with_hlc("kv", "sensor", hlc1200).unwrap();
+    assert!(accepted_newer);
+
+    let size_final = std::fs::metadata(&active_seg_path).unwrap().len();
+    assert!(size_final > size_after);
+    assert_eq!(db.get("kv", "sensor").unwrap(), None);
+
+    db.close().unwrap();
+}
+
+#[test]
+fn test_segment_parser_bounds_validation() {
+    use aerolog_core::log::segment::SegmentFile;
+    use std::path::Path;
+
+    assert_eq!(SegmentFile::parse_file_id(Path::new("data-aerolog")), None);
+    assert_eq!(SegmentFile::parse_file_id(Path::new("data-.aerolog")), None);
+    assert_eq!(SegmentFile::parse_file_id(Path::new(".aerolog")), None);
+    assert_eq!(
+        SegmentFile::parse_file_id(Path::new("data-000001.aerolog")),
+        Some(1)
+    );
+    assert_eq!(
+        SegmentFile::parse_file_id(Path::new("/var/log/data-000042.aerolog")),
+        Some(42)
+    );
+    assert_eq!(SegmentFile::parse_file_id(Path::new("random-file.txt")), None);
+}

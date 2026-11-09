@@ -19,6 +19,9 @@ use std::path::{Path, PathBuf};
 /// Extension for AeroLog segment data files.
 pub const SEGMENT_FILE_EXTENSION: &str = "aerolog";
 
+/// Standard dot-delimited suffix for segment data files.
+pub const SEGMENT_FILE_SUFFIX: &str = ".aerolog";
+
 /// Standard prefix for segment data files.
 pub const SEGMENT_FILE_PREFIX: &str = "data-";
 
@@ -38,19 +41,22 @@ pub struct SegmentFile {
 impl SegmentFile {
     /// Constructs the standard filename for a given file ID.
     pub fn filename_for_id(file_id: u32) -> String {
-        format!("{SEGMENT_FILE_PREFIX}{file_id:06}.{SEGMENT_FILE_EXTENSION}")
+        format!("{SEGMENT_FILE_PREFIX}{file_id:06}{SEGMENT_FILE_SUFFIX}")
     }
 
     /// Attempts to parse a segment file ID from a filename or path.
     pub fn parse_file_id(path: &Path) -> Option<u32> {
         let filename = path.file_name()?.to_str()?;
-        if !filename.starts_with(SEGMENT_FILE_PREFIX) || !filename.ends_with(SEGMENT_FILE_EXTENSION)
+        let prefix_len = SEGMENT_FILE_PREFIX.len();
+        let suffix_len = SEGMENT_FILE_SUFFIX.len();
+
+        if filename.len() <= prefix_len + suffix_len
+            || !filename.starts_with(SEGMENT_FILE_PREFIX)
+            || !filename.ends_with(SEGMENT_FILE_SUFFIX)
         {
             return None;
         }
 
-        let prefix_len = SEGMENT_FILE_PREFIX.len();
-        let suffix_len = SEGMENT_FILE_EXTENSION.len() + 1; // including dot
         let num_str = &filename[prefix_len..filename.len() - suffix_len];
         num_str.parse::<u32>().ok()
     }
@@ -112,5 +118,12 @@ mod tests {
 
         let invalid = SegmentFile::parse_file_id(Path::new("not-a-segment.txt"));
         assert!(invalid.is_none());
+
+        // Malformed and edge-case filenames must not panic
+        assert_eq!(SegmentFile::parse_file_id(Path::new("data-aerolog")), None);
+        assert_eq!(SegmentFile::parse_file_id(Path::new("data-.aerolog")), None);
+        assert_eq!(SegmentFile::parse_file_id(Path::new("data-000001.txt")), None);
+        assert_eq!(SegmentFile::parse_file_id(Path::new("data-")), None);
+        assert_eq!(SegmentFile::parse_file_id(Path::new(".aerolog")), None);
     }
 }

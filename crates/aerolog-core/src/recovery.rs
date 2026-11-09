@@ -90,7 +90,8 @@ impl RecoveryManager {
                     RecordType::StreamEntry => {
                         let stream_id = String::from_utf8_lossy(&record.key);
                         let ptr = RecordPointer::new(file_id, offset, total_len, hlc, false);
-                        sparse_index.record_entry(&stream_id, hlc, ptr);
+                        let seq = crate::stream::StreamEntry::peek_sequence(&record.value)?;
+                        sparse_index.record_recovered_entry(&stream_id, seq, hlc, ptr);
                     }
                 }
 
